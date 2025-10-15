@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Retina Capture PWA</title>
+ 
+ <!-- PWA MANIFEST and THEMING -->
+ <link rel="manifest" href="manifest.json">
+ <meta name="theme-color" content="#ffffff">
+ <meta name="apple-mobile-web-app-capable" content="yes">
+ <meta name="apple-mobile-web-app-status-bar-style" content="black">
+ <!-- /PWA -->
+ 
+ <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+ <main>
+  <!-- Global Step Navigation Banner (Now clickable via JS) -->
+  <nav id="step-nav">
+   <div class="step" data-step="1">1. Info</div>
+   <div class="step" data-step="2">2. Capture</div>
+   <div class="step" data-step="3">3. Review</div>
+   <div class="step" data-step="4">4. TLX</div>
+  </nav>
+
+  <!-- CRITICAL: The page-container wrapper for paging logic -->
+  <div class="page-container">
+   <!-- PAGE 1: Basic Info -->
+   <section id="page-basic" class="page active" data-page="1">
+    <h2>Quick Tips</h2>
+    <p class="info-text">Lorem ipsum dolor sit amet, consectetur adipiscing elit. This app is optimized for rapid image acquisition and data entry.</p>
+    <div class="example-images">
+     <div class="example"><p class="sign">✓</p>Good Example</div>
+     <div class="example"><p class="sign">✗</p>Bad Example</div>
+    </div>
+
+    <label for="subjectId">SUBJECT ID:</label>
+    <input type="text" id="subjectId" placeholder="Enter ID" class="input-field" />
+    <button id="toCaptureBtn" class="primary-btn bottom-btn">TO IMAGE CAPTURE</button>
+   </section>
+
+   <!-- PAGE 2: Image Capture / Observation -->
+   <section id="page-capture" class="page" data-page="2">
+    <div class="camera-container">
+     <video id="cameraFeed" autoplay playsinline></video>
+     <div id="overlay"></div>
+    </div>
+
+    <div class="capture-status">
+     <p>OD DETECTION: <span id="odStatus">OFF</span></p>
+     <p>CAPTURED IMAGES: <span id="imageCount">0</span></p>
+    </div>
+
+    <div class="controls-row">
+     <button id="odToggleBtn" class="control-btn primary-btn">OD ON</button>
+     <button id="switchCameraBtn" class="control-btn secondary-btn">SWITCH CAMERA</button>
+     <button id="toReviewBtn" class="control-btn primary-btn">REVIEW</button>
+    </div>
+    
+    <div id="carousel" class="carousel"></div>
+   </section>
+
+   <!-- PAGE 3: Review -->
+   <section id="page-review" class="page" data-page="3">
+    
+    <!-- Modification #3: New Top Control Layout -->
+    <div class="review-controls-top">
+     <button id="deleteSelectedBtn" class="danger-btn">Delete selected</button>
+     <button id="selectMultipleBtn" class="secondary-btn">Toggle Selection</button>
+    </div>
+    
+    <div id="review-grid" class="image-grid">
+     <!-- Image thumbnails will be dynamically added here -->
+    </div>
+
+    <!-- Modification #3: Result Display moved below grid but above fixed controls -->
+    <p id="resultDisplay" class="classification-result" style="display: none;">RESULT: NO CLASSIFICATION RUN</p>
+    
+
+    <!-- Modification #4: New Permanent Bottom Control Layout -->
+    <div class="nav-controls fixed-bottom-controls"> 
+     <button id="backFromReviewBtn" class="secondary-btn">BACK</button>
+     <button id="runClassificationBtn" class="primary-btn">Classify</button>
+     <button id="toQuestionnaireBtn" class="primary-btn">TO QUESTIONNAIRE</button>
+    </div>
+
+   </section>
+
+   <!-- PAGE 4: Questionnaire -->
+   <section id="page-questionnaire" class="page" data-page="4">
+    <h2>NASA TLX Questionnaire</h2>
+    <div class="nasa-tlx-questions">
+     <!-- Questions will be dynamically added by JavaScript (Modification #5) -->
+    </div>
+
+    <label for="comments">Comments:</label>
+    <textarea id="comments" rows="3"></textarea>
+
+    <div class="nav-controls">
+     <button id="backFromQuestionnaireBtn" class="secondary-btn">BACK</button>
+     <button id="submitBtn" class="primary-btn">SUBMIT</button>
+    </div>
+   </section>
+  </div>
+ </main>
+
+ <div id="modal-overlay" class="modal-overlay" style="display: none;">
+  <div class="modal-content">
+   <h3>Submission Complete!</h3>
+   <p>The captured images and questionnaire results have been successfully saved.</p>
+   <div class="modal-actions">
+    <button id="continueSessionBtn" class="primary-btn">Continue Session</button>
+    <button id="newSessionBtn" class="secondary-btn">New Session</button>
+   </div>
+  </div>
+ </div>
+ 
+ <script type="module" src="script.js"></script>
+</body>
+</html>

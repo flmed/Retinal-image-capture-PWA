@@ -1,0 +1,7 @@
+# Ignore everything
+/*
+/Web Application
+# Exceptions
+!/ghost_WA/
+!/ghost_WA/**
+!/.gitignore

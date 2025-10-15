@@ -18,7 +18,9 @@
    <div class="step" data-step="1">1. Info</div>
    <div class="step" data-step="2">2. Capture</div>
    <div class="step" data-step="3">3. Review</div>
-   <div class="step" data-step="4">4. TLX</div>
+   <div class="step" data-step="4">4. Analysis</div>
+   <div class="step" data-step="5">5. TLX</div>
+   <div class="step" data-step="6">6. Overview</div>
   </nav>
 
   <div class="page-container">
@@ -40,6 +42,9 @@
         </div>
     </div>
     
+    <label for="operatorId">Operator ID (Required):</label>
+    <input type="text" id="operatorId" placeholder="Enter Operator ID"/>
+    
     <label for="subjectId">Subject ID (Required):</label>
     <input type="text" id="subjectId" placeholder="Enter unique ID"/>
 
@@ -48,13 +53,26 @@
     </div>
    </section>
 
-   <section id="page-capture" class="page" data-page="2">
+<section id="page-capture" class="page" data-page="2">
     <h2>Image Capture</h2>
     
     <div class="camera-container">
      <video id="cameraFeed" autoplay playsinline></video>
+     <button id="optionsBtn" class="options-btn">Settings</button>
     </div>
 
+    <div id="cameraOptionsPanel" class="camera-options-panel" style="display:none;">
+        <h3>Camera Settings</h3>
+        <div class="setting-item">
+            <label for="cameraSelector">Select Camera:</label>
+            <select id="cameraSelector"></select>
+        </div>
+        <div class="setting-item">
+            <label for="torchToggle">Flash/LED:</label>
+            <button id="torchToggleBtn" class="primary-btn">ON</button>
+        </div>
+        <button id="closeOptionsBtn" class="primary-btn">Close</button>
+    </div>
     <div class="capture-status">
      <p>OD DETECTION: <span id="odStatus" data-state="OFF">INACTIVE</span></p>
      <p>CAPTURED: <span id="imageCount">L: 0 | R: 0</span></p>
@@ -87,27 +105,55 @@
 
    <section id="page-review" class="page" data-page="3">
     <h2>Review Images</h2>
-    
-    <div id="resultDisplay" class="classification-result" style="display: none;">
-     </div>
 
     <div class="review-controls-top">
      <button id="selectMultipleBtn" class="secondary-btn">Toggle Selection</button>
      <button id="deleteSelectedBtn" class="danger-btn" disabled>Delete Selected (0)</button>
-     <button id="runClassificationBtn" class="primary-btn">Classify</button>
     </div>
 
-    <div id="review-grid">
-     </div>
+    <div class="split-gallery-container">
+        <div class="gallery-column">
+            <h3 id="left-eye-gallery-title">LEFT EYE (0)</h3>
+            <div id="review-grid-left" class="review-grid"></div>
+        </div>
+        <div class="gallery-column">
+            <h3 id="right-eye-gallery-title">RIGHT EYE (0)</h3>
+            <div id="review-grid-right" class="review-grid"></div>
+        </div>
+    </div>
     
     <div class="nav-controls fixed-bottom-controls"> 
      <button id="backFromReviewBtn" class="secondary-btn">BACK</button>
-     <button id="toQuestionnaireBtn" class="primary-btn">TO QUESTIONNAIRE</button>
+     <button id="toAnalyzeBtn" class="primary-btn">TO ANALYZE</button>
     </div>
 
    </section>
 
-   <section id="page-questionnaire" class="page" data-page="4">
+   <section id="page-analysis" class="page" data-page="4">
+    <h2>Image Analysis</h2>
+    <p class="analysis-subtitle">Top 5 images from each eye selected for analysis.</p>
+
+    <div class="analysis-section">
+        <h3>LEFT EYE IMAGES</h3>
+        <div id="analysis-grid-left" class="analysis-grid"></div>
+        <div id="analysis-result-left" class="analysis-result" style="display: none;"></div>
+    </div>
+    
+    <div class="analysis-section">
+        <h3>RIGHT EYE IMAGES</h3>
+        <div id="analysis-grid-right" class="analysis-grid"></div>
+        <div id="analysis-result-right" class="analysis-result" style="display: none;"></div>
+    </div>
+    
+    <button id="runAnalysisBtn" class="primary-btn wide-btn">RUN ANALYSIS</button>
+
+    <div class="nav-controls fixed-bottom-controls"> 
+     <button id="backFromAnalysisBtn" class="secondary-btn">BACK</button>
+     <button id="toQuestionnaireBtn" class="primary-btn">TO QUESTIONNAIRE</button>
+    </div>
+   </section>
+
+   <section id="page-questionnaire" class="page" data-page="5">
     <h2>NASA TLX Questionnaire</h2>
     <div class="nasa-tlx-questions">
      </div>
@@ -117,10 +163,51 @@
 
     <div class="nav-controls fixed-bottom-controls">
      <button id="backFromQuestionnaireBtn" class="secondary-btn">BACK</button>
-     <button id="submitBtn" class="primary-btn">SUBMIT</button>
-    </div>
+     <button id="toOverviewBtn" class="primary-btn">TO OVERVIEW</button> </div>
    </section>
-  </div>
+
+   <section id="page-overview" class="page" data-page="6">
+        <h2>Session Overview</h2>
+
+        <div class="overview-section">
+            <h3>SESSION DETAILS</h3>
+            <p><strong>Operator ID:</strong> <span id="overviewOperatorId">N/A</span></p>
+            <p><strong>Subject ID:</strong> <span id="overviewSubjectId">N/A</span></p>
+        </div>
+
+        <div class="overview-section">
+            <h3>IMAGE REVIEW</h3>
+            <div class="review-carousel-group">
+                <div class="overview-image-section">
+                    <h4>LEFT EYE (<span id="overviewLeftCount">0</span>)</h4>
+                    <div id="overview-carousel-left" class="overview-carousel analysis-grid"></div>
+                </div>
+                <div class="overview-image-section">
+                    <h4>RIGHT EYE (<span id="overviewRightCount">0</span>)</h4>
+                    <div id="overview-carousel-right" class="overview-carousel analysis-grid"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="overview-section">
+            <h3>ANALYSIS RESULTS</h3>
+            <div id="overview-analysis-left" class="analysis-result"></div>
+            <div id="overview-analysis-right" class="analysis-result"></div>
+        </div>
+
+        <div class="overview-section">
+            <h3>NASA TLX & Comments</h3>
+            <div id="overview-tlx-results" class="nasa-tlx-questions">
+                </div>
+            <p><strong>Comments:</strong> <span id="overviewComments">No comments provided.</span></p>
+        </div>
+        
+        <div class="nav-controls fixed-bottom-controls">
+            <button id="backFromOverviewBtn" class="secondary-btn">BACK</button>
+            <button id="submitSessionBtn" class="primary-btn">SUBMIT SESSION</button>
+        </div>
+   </section>
+   </div>
  </main>
 
  <div id="modal-overlay" class="modal-overlay" style="display: none;">
@@ -132,6 +219,18 @@
     <button id="newSessionBtn" class="primary-btn">Start New Session</button>
    </div>
   </div>
+ </div>
+
+ <div id="lightbox-overlay" style="display: none;">
+    <span id="lightbox-close">&times;</span>
+    <div id="lightbox-info"></div>
+    <div id="lightbox-prev" class="lightbox-nav">&#10094;</div>
+    <img id="lightbox-image" src="" alt="Enlarged view">
+    <div id="lightbox-next" class="lightbox-nav">&#10095;</div>
+    <div class="lightbox-actions">
+        <button id="lightboxSelectBtn" class="secondary-btn">Select</button>
+        <button id="lightboxDeleteBtn" class="danger-btn">Delete</button>
+    </div>
  </div>
 
  <script type="module" src="script.js"></script>

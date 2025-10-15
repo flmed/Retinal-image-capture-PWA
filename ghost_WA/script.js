@@ -632,3 +632,5 @@ async function initFirebase() {
         console.error("Firebase initialization failed:", error);
     }
 }
+
+// LED now is working I hope

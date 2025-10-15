@@ -36,7 +36,7 @@ main {
 }
 
 /* ----------------------------------
-    STEP NAVIGATION BANNER STYLING
+    STEP NAVIGATION BANNER STYLING (UNCHANGED)
     ---------------------------------- */
 #step-nav {
     display: flex;
@@ -71,7 +71,7 @@ main {
 }
 
 /* ----------------------------------
-    PAGE CONTAINER & PAGING
+    PAGE CONTAINER & PAGING (UNCHANGED)
     ---------------------------------- */
 .page-container {
     position: relative;
@@ -108,7 +108,7 @@ h2 {
 }
 
 /* ----------------------------------
-    GLOBAL BUTTONS & CONTROLS
+    GLOBAL BUTTONS & CONTROLS (UNCHANGED)
     ---------------------------------- */
 button {
     padding: 12px 24px;
@@ -150,53 +150,100 @@ button {
     padding-top: 20px;
 }
 
+/* Fixed Bottom Navigation Consistency (UNCHANGED) */
+.fixed-bottom-controls { 
+    position: fixed; 
+    bottom: 0; 
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px; 
+    max-width: 90%; 
+    height: 70px;
+    background-color: #fff;
+    box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.05);
+    padding: 10px 20px;
+    box-sizing: border-box;
+    z-index: 100;
+    margin-top: 0; 
+    border-radius: 0 0 20px 20px; 
+    
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+/* Specific layout for Page 1 (Info) which has only one button (UNCHANGED) */
+#page-basic .bottom-btn {
+    margin-top: 40px;
+    width: 95%; 
+}
+#page-basic .nav-controls {
+    justify-content: flex-end; 
+    width: 100%;
+}
+
+
 /* ----------------------------------
-    PAGE 1: Basic Info
+    PAGE 1: Basic Info (MODIFICATIONS 3 & 4)
     ---------------------------------- */
 #page-basic {
     justify-content: flex-start;
 }
-#page-basic .bottom-btn {
-    margin-top: 40px;
+
+/* MODIFICATION 3: Quick Tips Layout */
+.info-tips-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px; /* Slightly larger gap */
+    margin-bottom: 30px; /* Increased separation */
+    padding: 10px 0;
+    width: 95%;
+    display: grid; /* Ensure it is a grid */
+    text-align: center;
 }
-.input-field {
-    padding: 10px 15px;
-    border: 1px solid var(--primary-color);
-    border-radius: 5px;
-    width: 70%;
-    font-size: 1.1em;
-    margin-bottom: 20px;
+.tip-item {
+    padding: 15px; /* Larger padding */
+    border: none;
+    border-radius: 10px;
+    background: var(--background-light);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); /* Added subtle shadow */
+    height: 100%;
 }
-label {
-    font-weight: 500;
+.tip-icon {
+    font-size: 2.5em; /* Larger icon */
+    display: block;
+    margin-bottom: 8px;
+    color: var(--primary-color); /* Added color to icons */
+}
+.tip-item p {
+    font-size: 0.9em;
+    margin: 0;
+    color: var(--text-dark);
+}
+
+/* MODIFICATION 4: Subject Input Field */
+label[for="subjectId"] {
+    display: block;
+    margin-top: 40px; /* More separation */
+    margin-bottom: 5px;
+    font-weight: 700;
+    font-size: 1.1em; /* Larger font size */
     align-self: center;
     width: 70%;
     text-align: left;
-    margin-bottom: 5px;
+    color: var(--text-dark);
 }
-.info-text {
-    width: 90%;
-    text-align: center;
-    margin-bottom: 30px;
+#subjectId {
+    padding: 18px 20px; /* Larger padding */
+    font-size: 1.2em; /* Larger font size */
+    border: 2px solid var(--primary-color);
+    border-radius: 5px;
+    width: 70%; 
+    box-sizing: border-box;
 }
 
-.example-images {
-    display: flex;
-    justify-content: space-around;
-    width: 80%;
-    margin: 30px 0;
-}
-.example {
-    width: 120px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    font-size: 0.9em;
-}
-.example .sign {
-    font-size: 2.5em;
-    font-weight: 700;
-    margin-bottom: 5px;
+/* Removed/cleaned up previous info page styles */
+.example-images, .example, .info-text {
+    display: none; /* Removed unused elements/styles that were added previously */
 }
 
 
@@ -205,78 +252,141 @@ label {
     ---------------------------------- */
 #page-capture {
     justify-content: flex-start;
+    padding-bottom: 90px;
 }
 
+/* Camera Container (less tall, still portrait-oriented) */
 .camera-container {
-    width: 85%;
-    /* 4:3 Aspect Ratio for video feed */
-    padding-bottom: 63.75%; 
+    width: 85%; /* slightly wider to show more image */
+    aspect-ratio: 3 / 5; /* less vertical than 9:16 — closer to what the iPad camera naturally gives */
     position: relative;
     background: #111;
     border-radius: 12px;
     overflow: hidden;
-    margin-bottom: 20px;
+    margin-bottom: 0px;
 }
+
+/* Live Camera Feed */
 .camera-container video {
-    width: 100%;
-    height: 100%;
     position: absolute;
     top: 0;
     left: 0;
-    object-fit: cover;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* show more of the feed, may add small letterboxing */
+    background: #000; /* optional, fills any black bars */
 }
 
+/* Status Panel (MODIFICATION 2: Status Coloring) */
 .capture-status {
     display: flex;
     justify-content: space-around;
     width: 95%;
-    margin: 10px 0;
-    padding: 10px 0;
+    margin: 2px 0 2px 0; 
+    padding: 2px 0;
     font-size: 1em;
     font-weight: 500;
     border-bottom: 1px solid var(--border-color);
 }
 
-.controls-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-    width: 95%;
-    margin: 20px 0;
+/* MODIFICATION 2: OD Status Coloring */
+#odStatus {
+    font-weight: 700;
+}
+#odStatus[data-state="INACTIVE"] { /* Based on HTML text: INACTIVE */
+    color: var(--danger-color);
+}
+#odStatus[data-state="ACTIVE"] { /* Assuming JS sets this for green */
+    color: var(--success-color);
 }
 
-/* OD Toggle button specific styling */
-#odToggleBtn.active {
-    background-color: var(--success-color); /* Green when OD is ON/Capturing */
+/* Controls Row (3-Slot Grid) (UNCHANGED) */
+.controls-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 15px;
+    width: 95%;
+    margin: 15px 0;
+}
+.control-btn {
+    width: 100%;
+    padding: 2px 5px;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+/* L/R Eye Toggle Styling (UNCHANGED) */
+.eye-toggle-container {
+    display: flex;
+    border-radius: 8px;
+    overflow: hidden;
+    height: 48px; 
+    padding: 0; 
+    border: 1px solid var(--primary-color);
+    background-color: var(--background-light);
+}
+
+.toggle-side-btn {
+    flex-grow: 1;
+    padding: 0; 
+    border: none; 
+    border-radius: 0; 
+    min-height: unset; 
+    font-size: 0.9em;
+    font-weight: 700;
+    text-transform: uppercase;
+    background-color: transparent; 
+    color: var(--text-dark);
+}
+
+.toggle-side-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+#eyeToggleLeft {
+    border-radius: 8px 0 0 8px;
+}
+#eyeToggleRight {
+    border-radius: 0 8px 8px 0;
+}
+
+/* Auto Capture Toggle button specific styling (UNCHANGED) */
+#autoCaptureToggleBtn.active {
+    background-color: var(--success-color); 
     box-shadow: 0 0 10px rgba(40, 167, 69, 0.7);
 }
 
-/* CAROUSEL STYLING (Modification #1: Horizontal Scrolling) */
-.carousel {
-    width: 95%;
-    height: 100px; /* Fixed height for the carousel row */
-    overflow-x: scroll; /* Enable horizontal scrolling */
-    overflow-y: hidden;
-    white-space: nowrap;
+/* MODIFICATION 1: Image Carousel (Quick Review Row) */
+#carousel-container {
+    width: 95%; /* Match other elements */
+    margin-top: 2px;
+}
+#carousel {
+    display: flex; /* Ensures single row layout */
+    overflow-x: auto; /* Allows horizontal scrolling */
+    gap: 10px;
+    padding: 8px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    padding: 8px;
-    margin-top: 20px;
-    flex-shrink: 0; /* Prevent carousel from shrinking */
-    /* Add scrollbar styling for better visibility */
-    scrollbar-color: var(--primary-color) var(--background-light);
-    scrollbar-width: thin;
+    height: 80px; /* Fixed height for the row */
+    -ms-overflow-style: none; /* Hide scrollbar for IE/Edge */
+    scrollbar-width: none; /* Hide scrollbar for Firefox */
+    white-space: nowrap; /* Prevent wrapping */
+}
+#carousel::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome/Safari/Opera */
 }
 
 .carousel-item {
-    display: inline-block;
+    flex-shrink: 0;
     width: 80px;
     height: 80px;
-    margin-right: 8px;
     border-radius: 4px;
     overflow: hidden;
     position: relative;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin: 2px 0; /* Vertical space for box-shadow */
 }
 
 .carousel-item img {
@@ -284,21 +394,17 @@ label {
     height: 100%;
     object-fit: cover;
 }
-.carousel-item:last-child {
-    margin-right: 0;
-}
 
 
 /* ----------------------------------
-    PAGE 3: Review
+    PAGE 3: Review (UNCHANGED)
     ---------------------------------- */
 #page-review {
     justify-content: flex-start;
     position: relative;
-    padding-bottom: 90px; /* Space for fixed bottom bar */
+    padding-bottom: 90px;
 }
 
-/* Top Controls (Delete/Toggle Selection) */
 .review-controls-top {
     width: 95%;
     display: flex;
@@ -307,31 +413,25 @@ label {
     padding-top: 5px;
 }
 
-/* Bottom Controls (Fixed row for Back, Classify, To Questionnaire) */
-.fixed-bottom-controls { 
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 95%;
-    max-width: 740px; 
+#page-review .fixed-bottom-controls { 
     display: grid;
-    /* Modification #4: Adjust column widths to make Classify narrower */
     grid-template-columns: 1fr 1.2fr 1fr; 
     gap: 10px;
     padding-top: 0;
 }
-.fixed-bottom-controls button:first-child { grid-column: 1 / 2; }
-.fixed-bottom-controls button:nth-child(2) { grid-column: 2 / 3; }
-.fixed-bottom-controls button:last-child { grid-column: 3 / 4; }
+#page-review .fixed-bottom-controls button {
+    margin-top: 0;
+}
+#page-review .fixed-bottom-controls button:first-child { grid-column: 1 / 2; }
+#page-review .fixed-bottom-controls button:nth-child(2) { grid-column: 2 / 3; }
+#page-review .fixed-bottom-controls button:last-child { grid-column: 3 / 4; }
 
-/* Modification #2: Image Grid spacing and height */
 .image-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 15px; /* Increased gap */
+    gap: 15px; 
     width: 95%;
-    max-height: 60vh; /* Increased height */
+    max-height: 60vh; 
     background-color: var(--background-light);
     border-radius: 8px;
     padding: 15px;
@@ -389,26 +489,26 @@ label {
     box-shadow: 0 0 8px rgba(255, 193, 7, 0.5);
 }
 
-/* Modification #3: Classification Result Styling */
 .classification-result {
     font-weight: 700;
     padding: 10px;
-    border: 2px solid var(--success-color); /* Green border */
-    color: #155724; /* Dark green text */
-    background-color: #d4edda; /* Light green background */
+    border: 2px solid var(--success-color); 
+    color: #155724; 
+    background-color: #d4edda; 
     border-radius: 4px;
     width: 95%;
-    margin-bottom: 20px; /* Space above the fixed buttons */
+    margin-bottom: 20px; 
     display: none;
     text-align: left;
 }
 
 
 /* ----------------------------------
-    PAGE 4: Questionnaire (TLX)
+    PAGE 4: Questionnaire (TLX) (UNCHANGED)
     ---------------------------------- */
 #page-questionnaire {
     justify-content: flex-start;
+    padding-bottom: 90px; 
 }
 .nasa-tlx-questions {
     width: 95%;
@@ -451,10 +551,13 @@ textarea {
     max-width: 600px;
     margin-bottom: 30px;
 }
+#page-questionnaire .nav-controls {
+    justify-content: space-between;
+}
 
 
 /* ----------------------------------
-    MODAL/POP-UP STYLES
+    MODAL/POP-UP STYLES (UNCHANGED)
     ---------------------------------- */
 .modal-overlay {
     position: fixed;

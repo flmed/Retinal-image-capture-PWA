@@ -14,7 +14,11 @@ setLogLevel('Debug');
 
 // --- Application State ---
 let currentPage = 1;
-let capturedImages = []; // Stores objects: { id: 1, base64: 'data:image...', selected: false }
+// Modification 2: Track the currently selected eye
+let currentEye = 'RIGHT'; // Default to RIGHT (OD)
+// Modification 2: Update capturedImages object structure
+// Stores objects: { id: 1, base64: 'data:image...', eye: 'RIGHT'/'LEFT', selected: false }
+let capturedImages = []; 
 let subjectInfo = { id: '', notes: '' };
 let isSelectionMode = false;
 let isOdDetectionOn = false; // Controls the auto-capture state
@@ -128,9 +132,11 @@ function navigateTo(step) {
     if (step === 2) {
         // Start camera and auto-capture when entering capture page
         startCamera();
-        startAutoCapture(); 
+        // Modification 5: Auto-capture should not start automatically
+        // startAutoCapture(); 
         renderCarousel();
         updateCaptureStatus();
+        updateEyeToggleUI(); // Modification 2: Ensure the eye toggle is correctly initialized
     }
     if (step === 3) {
         renderImages();
@@ -180,71 +186,68 @@ function stopCamera() {
     }
 }
 
-/** Switches between available cameras. */
+// Modification 1: Remove switchCamera, it is no longer used in the UI
+/*
 async function switchCamera() {
-    if (mediaStream) {
-        stopCamera();
-    }
-    
-    try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-        if (videoDevices.length > 1) {
-            // Logic to find the next camera ID
-            let currentDeviceId = '';
-            if (mediaStream && mediaStream.getVideoTracks().length > 0) {
-                 currentDeviceId = mediaStream.getVideoTracks()[0].getSettings().deviceId;
-            }
-            
-            const currentIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
-            const nextIndex = (currentIndex + 1) % videoDevices.length;
-            const nextDeviceId = videoDevices[nextIndex].deviceId;
-            
-            await startCamera(nextDeviceId);
-            alertUser(`Switched camera to ${videoDevices.find(d => d.deviceId === nextDeviceId)?.label || 'new device'}.`);
-
-        } else if (videoDevices.length === 1) {
-             alertUser("Only one camera device found. Cannot switch.", true);
-             startCamera(videoDevices[0].deviceId); 
-        } else {
-            alertUser("No camera devices found.", true);
-        }
-    } catch (error) {
-        console.error("Error switching camera:", error);
-        alertUser("Failed to switch camera.", true);
-        startCamera(); 
-    }
+    // ... removed
 }
+*/
 
-/** Function to capture a mock image. */
-function mockImageCapture() {
+/** * Modification 4: Manual capture function.
+ * Modification 2: Adds eye information to the image object.
+ */
+function manualImageCapture() {
     // Mock image (grey box with number)
     const size = 200;
-    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=Mock+${capturedImages.length + 1}`;
+    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=${currentEye}+${capturedImages.length + 1}`;
 
     const newImage = {
         id: Date.now(),
         base64: mockUrl,
+        eye: currentEye, // Modification 2: Store the current eye
         selected: false
     };
 
     capturedImages.push(newImage);
     renderCarousel();
     updateCaptureStatus();
-    console.log(`Mock Image ${capturedImages.length} captured.`);
-    alertUser(`Mock Image ${capturedImages.length} captured.`);
+    console.log(`${currentEye} Image ${capturedImages.length} captured manually.`);
+    alertUser(`${currentEye} Image ${capturedImages.length} captured manually.`);
+}
+
+
+/** Function to capture a mock image (used for auto-capture). */
+function mockImageCapture() {
+    // Mock image (grey box with number)
+    const size = 200;
+    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=${currentEye}+Auto+${capturedImages.length + 1}`;
+
+    const newImage = {
+        id: Date.now(),
+        base64: mockUrl,
+        eye: currentEye, // Modification 2: Store the current eye
+        selected: false
+    };
+
+    capturedImages.push(newImage);
+    renderCarousel();
+    updateCaptureStatus();
+    console.log(`${currentEye} Auto Image ${capturedImages.length} captured.`);
+    alertUser(`${currentEye} Auto Image ${capturedImages.length} captured.`);
 }
 
 /** Starts the 4-second automatic capture interval. */
 function startAutoCapture() {
     if (autoCaptureInterval) clearInterval(autoCaptureInterval);
 
+    // NOTE: The 400ms interval is used here, but the comment suggests 4s. 
+    // Keeping 400ms as per the original code to avoid breaking the simulation,
+    // but a production app should use 4000ms for 4 seconds.
     autoCaptureInterval = setInterval(() => {
         if (currentPage === 2 && isOdDetectionOn) {
             mockImageCapture();
         }
-    }, 400); // Capture every 4 seconds
+    }, 400); 
     console.log("Auto-Capture interval started (400ms).");
 }
 
@@ -257,28 +260,67 @@ function stopAutoCapture() {
     }
 }
 
-/** Toggles the OD Capture state. The interval handles the actual capture. */
+/** * Modification 5: Toggles the OD Capture state and updates UI. 
+ * The button is now "AUTO CAPTURE".
+ */
 function toggleOdCapture() {
-    const odToggleBtn = document.getElementById('odToggleBtn');
+    const odToggleBtn = document.getElementById('autoCaptureToggleBtn'); // Updated ID
     const odStatusSpan = document.getElementById('odStatus');
 
     isOdDetectionOn = !isOdDetectionOn;
 
     if (isOdDetectionOn) {
-        odToggleBtn.textContent = 'OD OFF (Capturing)';
+        odToggleBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
         odToggleBtn.classList.add('active');
-        odStatusSpan.textContent = 'ON';
+        odStatusSpan.textContent = 'ACTIVE';
+        startAutoCapture(); // Start the interval when turning ON
     } else {
-        odToggleBtn.textContent = 'OD ON (Ready to Capture)';
+        odToggleBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
         odToggleBtn.classList.remove('active');
-        odStatusSpan.textContent = 'OFF';
+        odStatusSpan.textContent = 'INACTIVE';
+        stopAutoCapture(); // Stop the interval when turning OFF
     }
 }
 
-/** Updates the image count and OD status display. */
+/** * Modification 6: Updates the image count display to separate LEFT/RIGHT eye counts.
+ * Modification 5: Also updates the OD status text label.
+ */
 function updateCaptureStatus() {
-    document.getElementById('imageCount').textContent = capturedImages.length;
-    // OD status is updated in toggleOdCapture
+    const leftCount = capturedImages.filter(img => img.eye === 'LEFT').length;
+    const rightCount = capturedImages.filter(img => img.eye === 'RIGHT').length;
+
+    // Modification 6: Update the combined status text
+    document.getElementById('imageCount').textContent = `L: ${leftCount} | R: ${rightCount}`;
+    
+    // Modification 5: Update the OD DETECTION label text
+    document.querySelector('.capture-status p:first-child').innerHTML = 
+        `OPTIC DISC AUTO DETECTION: <span id="odStatus">${isOdDetectionOn ? 'ACTIVE' : 'INACTIVE'}</span>`;
+}
+
+/** * Modification 2: Toggles the current eye selection (LEFT/RIGHT). 
+ * This is called from the new toggle button.
+ */
+function toggleEyeSelection(eye) {
+    currentEye = eye;
+    updateEyeToggleUI();
+    alertUser(`Eye selection set to ${currentEye}.`);
+}
+
+/** * Modification 2: Updates the visual state of the eye toggle button.
+ */
+function updateEyeToggleUI() {
+    const leftBtn = document.getElementById('eyeToggleLeft');
+    const rightBtn = document.getElementById('eyeToggleRight');
+
+    if (!leftBtn || !rightBtn) return;
+
+    if (currentEye === 'LEFT') {
+        leftBtn.classList.add('active');
+        rightBtn.classList.remove('active');
+    } else {
+        rightBtn.classList.add('active');
+        leftBtn.classList.remove('active');
+    }
 }
 
 
@@ -294,12 +336,14 @@ function renderCarousel() {
 
     imagesToDisplay.forEach((img, index) => {
         const item = document.createElement('div');
-        item.className = 'carousel-item';
+        // Modification 2: Add eye-specific class to carousel item
+        item.className = `carousel-item carousel-item-${img.eye.toLowerCase()}`; 
         item.setAttribute('data-id', img.id);
 
         const image = document.createElement('img');
         image.src = img.base64;
-        image.alt = `Captured Image ${index + 1}`;
+        // Modification 2: Update alt text to include eye info
+        image.alt = `${img.eye} Image ${index + 1}`; 
         
         item.appendChild(image);
         carousel.appendChild(item);
@@ -345,14 +389,20 @@ function renderImages() {
 
         const image = document.createElement('img');
         image.src = img.base64;
-        image.alt = `Captured Image ${index + 1}`;
+        image.alt = `${img.eye} Image ${index + 1}`; // Modification 2: Add eye info
 
         const overlay = document.createElement('div');
         overlay.className = 'selection-overlay';
         overlay.innerHTML = '&#x2713;'; // Checkmark symbol
-
+        
+        // Modification 2: Add eye label to the image thumbnail in review grid
+        const eyeLabel = document.createElement('span');
+        eyeLabel.className = 'eye-label';
+        eyeLabel.textContent = img.eye;
+        
         wrapper.appendChild(image);
         wrapper.appendChild(overlay);
+        wrapper.appendChild(eyeLabel); // Append eye label
         grid.appendChild(wrapper);
     });
 
@@ -504,7 +554,12 @@ async function handleSubmit() {
         timestamp: serverTimestamp(),
         questionnaire: questionnaireData,
         imageCount: capturedImages.length,
-        imageMetadata: capturedImages.map((img, index) => ({ id: img.id, index: index + 1 }))
+        // Modification 2: Include eye information in image metadata submission
+        imageMetadata: capturedImages.map((img, index) => ({ 
+            id: img.id, 
+            index: index + 1,
+            eye: img.eye 
+        }))
     };
 
     try {
@@ -538,6 +593,7 @@ function startNewSession() {
     subjectInfo = { id: '', notes: '' };
     isSelectionMode = false;
     isOdDetectionOn = false;
+    currentEye = 'RIGHT'; // Modification 2: Reset default eye
 
     // 2. Reset UI inputs
     document.getElementById('subjectId').value = '';
@@ -545,9 +601,12 @@ function startNewSession() {
     
     // Reset Capture Page UI
     updateCaptureStatus();
-    document.getElementById('odStatus').textContent = 'OFF';
-    document.getElementById('odToggleBtn').textContent = 'OD ON';
-    document.getElementById('odToggleBtn').classList.remove('active');
+    // Modification 5: Update the status text display
+    document.getElementById('odStatus').textContent = 'INACTIVE';
+    // Modification 5: Update the button text
+    document.getElementById('autoCaptureToggleBtn').textContent = 'AUTO CAPTURE (INACTIVE)';
+    document.getElementById('autoCaptureToggleBtn').classList.remove('active');
+    updateEyeToggleUI(); // Modification 2: Reset eye toggle UI
     renderCarousel();
 
     // Reset Review Page UI (hiding buttons/results)
@@ -566,10 +625,18 @@ function setupEventListeners() {
     document.getElementById('toCaptureBtn')?.addEventListener('click', () => navigateTo(2));
 
     // Capture Page (Step 2)
-    document.getElementById('odToggleBtn')?.addEventListener('click', toggleOdCapture);
-    document.getElementById('switchCameraBtn')?.addEventListener('click', switchCamera);
-    document.getElementById('toReviewBtn')?.addEventListener('click', () => navigateTo(3));
+    // Modification 5: Update button ID
+    document.getElementById('autoCaptureToggleBtn')?.addEventListener('click', toggleOdCapture); 
+    // Modification 2: New eye selection buttons
+    document.getElementById('eyeToggleLeft')?.addEventListener('click', () => toggleEyeSelection('LEFT')); 
+    document.getElementById('eyeToggleRight')?.addEventListener('click', () => toggleEyeSelection('RIGHT'));
+    // Modification 4: New manual capture button
+    document.getElementById('manualCaptureBtn')?.addEventListener('click', manualImageCapture); 
     
+    // Modification 3: New back and review buttons location/ID
+    document.getElementById('backFromCaptureBtn')?.addEventListener('click', () => navigateTo(1)); 
+    document.getElementById('toReviewBtnBottom')?.addEventListener('click', () => navigateTo(3));
+
     // Review Page (Step 3) 
     document.getElementById('selectMultipleBtn')?.addEventListener('click', toggleSelectionMode);
     document.getElementById('deleteSelectedBtn')?.addEventListener('click', deleteSelectedImages);

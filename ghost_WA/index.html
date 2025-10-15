@@ -5,19 +5,15 @@
  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
  <title>Retina Capture PWA</title>
  
- <!-- PWA MANIFEST and THEMING -->
  <link rel="manifest" href="manifest.json">
  <meta name="theme-color" content="#ffffff">
  <meta name="apple-mobile-web-app-capable" content="yes">
  <meta name="apple-mobile-web-app-status-bar-style" content="black">
- <!-- /PWA -->
- 
  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
  <main>
-  <!-- Global Step Navigation Banner (Now clickable via JS) -->
   <nav id="step-nav">
    <div class="step" data-step="1">1. Info</div>
    <div class="step" data-step="2">2. Capture</div>
@@ -25,80 +21,101 @@
    <div class="step" data-step="4">4. TLX</div>
   </nav>
 
-  <!-- CRITICAL: The page-container wrapper for paging logic -->
   <div class="page-container">
-   <!-- PAGE 1: Basic Info -->
    <section id="page-basic" class="page active" data-page="1">
     <h2>Quick Tips</h2>
-    <p class="info-text">Lorem ipsum dolor sit amet, consectetur adipiscing elit. This app is optimized for rapid image acquisition and data entry.</p>
-    <div class="example-images">
-     <div class="example"><p class="sign">✓</p>Good Example</div>
-     <div class="example"><p class="sign">✗</p>Bad Example</div>
+    
+    <div class="info-tips-grid">
+        <div class="tip-item">
+            <span class="tip-icon">📸</span>
+            <p>Ensure good lighting for clear focus during capture.</p>
+        </div>
+        <div class="tip-item">
+            <span class="tip-icon">⏱️</span>
+            <p>Auto-capture runs periodically only when actively detecting.</p>
+        </div>
+        <div class="tip-item">
+            <span class="tip-icon">🔄</span>
+            <p>Toggle the LEFT/RIGHT eye selection before capturing.</p>
+        </div>
     </div>
+    
+    <label for="subjectId">Subject ID (Required):</label>
+    <input type="text" id="subjectId" placeholder="Enter unique ID"/>
 
-    <label for="subjectId">SUBJECT ID:</label>
-    <input type="text" id="subjectId" placeholder="Enter ID" class="input-field" />
-    <button id="toCaptureBtn" class="primary-btn bottom-btn">TO IMAGE CAPTURE</button>
+    <div class="nav-controls fixed-bottom-controls single-button">
+     <button id="toCaptureBtn" class="primary-btn">TO CAPTURE</button>
+    </div>
    </section>
 
-   <!-- PAGE 2: Image Capture / Observation -->
    <section id="page-capture" class="page" data-page="2">
+    <h2>Image Capture</h2>
+    
     <div class="camera-container">
      <video id="cameraFeed" autoplay playsinline></video>
-     <div id="overlay"></div>
     </div>
 
     <div class="capture-status">
-     <p>OD DETECTION: <span id="odStatus">OFF</span></p>
-     <p>CAPTURED IMAGES: <span id="imageCount">0</span></p>
-    </div>
-
-    <div class="controls-row">
-     <button id="odToggleBtn" class="control-btn primary-btn">OD ON</button>
-     <button id="switchCameraBtn" class="control-btn secondary-btn">SWITCH CAMERA</button>
-     <button id="toReviewBtn" class="control-btn primary-btn">REVIEW</button>
+     <p>OD DETECTION: <span id="odStatus" data-state="OFF">INACTIVE</span></p>
+     <p>CAPTURED: <span id="imageCount">L: 0 | R: 0</span></p>
     </div>
     
-    <div id="carousel" class="carousel"></div>
+    <div class="controls-row">
+     
+     <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button> 
+
+     <div class="eye-toggle-container control-btn">
+       <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
+       <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
+     </div>
+     
+     <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
+    </div>
+
+
+    <div id="carousel-container">
+     <div id="carousel">
+      </div>
+    </div>
+    
+    <div class="nav-controls fixed-bottom-controls">
+      <button id="backFromCaptureBtn" class="secondary-btn">BACK</button>
+      <button id="toReviewBtnBottom" class="primary-btn">REVIEW</button>
+    </div>
+    
    </section>
 
-   <!-- PAGE 3: Review -->
    <section id="page-review" class="page" data-page="3">
+    <h2>Review Images</h2>
     
-    <!-- Modification #3: New Top Control Layout -->
+    <div id="resultDisplay" class="classification-result" style="display: none;">
+     </div>
+
     <div class="review-controls-top">
-     <button id="deleteSelectedBtn" class="danger-btn">Delete selected</button>
      <button id="selectMultipleBtn" class="secondary-btn">Toggle Selection</button>
-    </div>
-    
-    <div id="review-grid" class="image-grid">
-     <!-- Image thumbnails will be dynamically added here -->
+     <button id="deleteSelectedBtn" class="danger-btn" disabled>Delete Selected (0)</button>
+     <button id="runClassificationBtn" class="primary-btn">Classify</button>
     </div>
 
-    <!-- Modification #3: Result Display moved below grid but above fixed controls -->
-    <p id="resultDisplay" class="classification-result" style="display: none;">RESULT: NO CLASSIFICATION RUN</p>
+    <div id="review-grid">
+     </div>
     
-
-    <!-- Modification #4: New Permanent Bottom Control Layout -->
     <div class="nav-controls fixed-bottom-controls"> 
      <button id="backFromReviewBtn" class="secondary-btn">BACK</button>
-     <button id="runClassificationBtn" class="primary-btn">Classify</button>
      <button id="toQuestionnaireBtn" class="primary-btn">TO QUESTIONNAIRE</button>
     </div>
 
    </section>
 
-   <!-- PAGE 4: Questionnaire -->
    <section id="page-questionnaire" class="page" data-page="4">
     <h2>NASA TLX Questionnaire</h2>
     <div class="nasa-tlx-questions">
-     <!-- Questions will be dynamically added by JavaScript (Modification #5) -->
-    </div>
+     </div>
 
     <label for="comments">Comments:</label>
     <textarea id="comments" rows="3"></textarea>
 
-    <div class="nav-controls">
+    <div class="nav-controls fixed-bottom-controls">
      <button id="backFromQuestionnaireBtn" class="secondary-btn">BACK</button>
      <button id="submitBtn" class="primary-btn">SUBMIT</button>
     </div>
@@ -111,12 +128,26 @@
    <h3>Submission Complete!</h3>
    <p>The captured images and questionnaire results have been successfully saved.</p>
    <div class="modal-actions">
-    <button id="continueSessionBtn" class="primary-btn">Continue Session</button>
-    <button id="newSessionBtn" class="secondary-btn">New Session</button>
+    <button id="continueSessionBtn" class="secondary-btn">Continue Session</button>
+    <button id="newSessionBtn" class="primary-btn">Start New Session</button>
    </div>
   </div>
  </div>
- 
+
  <script type="module" src="script.js"></script>
+ 
+ <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => {
+                    console.log('SW registered: ', registration);
+                })
+                .catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                });
+        });
+    }
+ </script>
 </body>
 </html>

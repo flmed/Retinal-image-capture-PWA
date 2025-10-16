@@ -168,17 +168,18 @@ async function startCamera(deviceId = null) {
             return;
         }
         
-        // MODIFICATION: Request torch based on 'isTorchOn' state (default is true)
+        // MODIFIED: Request wider (4:3) aspect ratio (1280x960)
         const constraints = { 
             video: { 
                 facingMode: 'environment', // Prefer environment camera
                 width: { ideal: 1280 }, 
-                height: { ideal: 720 },
-                // Request torch if isTorchOn is true
+                height: { ideal: 960 }, // Changed from 720 to 960 for 4:3 aspect ratio
+                // Request torch based on 'isTorchOn' state
                 advanced: [{ torch: isTorchOn }] 
-            } 
+            },
+            audio: false // Ensure audio is disabled
         };
-        if (targetDeviceId) { constraints.video.deviceId = targetDeviceId; }
+        if (targetDeviceId) { constraints.video.deviceId = { exact: targetDeviceId }; } // Use exact match for deviceId
         
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
         videoElement.srcObject = mediaStream;
@@ -194,7 +195,8 @@ async function startCamera(deviceId = null) {
 
         // If torch is supported, try to enforce the 'isTorchOn' state (it should be on by default)
         if (capabilities.torch) {
-            isTorchOn = settings.torch || isTorchOn; // Update state based on current settings if available
+            // Check if the stream actually has a torch setting before reading it
+            isTorchOn = settings.torch || isTorchOn; 
             if (isTorchOn) {
                  videoTrack.applyConstraints({ advanced: [{ torch: true }] })
                     .catch(e => console.log('Could not manually enforce flashlight ON.', e));

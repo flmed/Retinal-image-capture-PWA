@@ -316,22 +316,57 @@ function stopCamera() {
         mediaStream = null;
     }
 }
+
+// --- Helper function to capture frame and convert to Base64 (MAJOR MODIFICATION 1) ---
+function captureFrame() {
+    const video = document.getElementById('cameraFeed');
+    if (!video || !mediaStream) {
+        alertUser("Camera feed is not active.", true);
+        return null;
+    }
+    
+    // Create a temporary canvas element
+    const canvas = document.createElement('canvas');
+    
+    // Determine the target resolution for the captured image (e.g., matching the video track settings)
+    const videoTrack = mediaStream.getVideoTracks()[0];
+    const { width, height } = videoTrack.getSettings();
+
+    // Use a fallback resolution if settings are unavailable
+    canvas.width = width || 1280;
+    canvas.height = height || 720;
+    
+    const context = canvas.getContext('2d');
+    
+    // Draw the current video frame onto the canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert the canvas content to a JPEG base64 string
+    const base64Data = canvas.toDataURL('image/jpeg', 0.9); // Quality set to 90%
+    
+    return base64Data;
+}
+
 function manualImageCapture() {
-    const size = 200;
-    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=${currentEye}+${capturedImages.length + 1}`;
-    const newImage = { id: Date.now(), base64: mockUrl, eye: currentEye, selected: false };
+    const base64 = captureFrame();
+    if (!base64) return;
+    
+    const newImage = { id: Date.now(), base64: base64, eye: currentEye, selected: false };
     capturedImages.push(newImage);
     renderCarousel();
     updateCaptureStatus();
 }
-function mockImageCapture() {
-    const size = 200;
-    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=${currentEye}+Auto+${capturedImages.length + 1}`;
-    const newImage = { id: Date.now(), base64: mockUrl, eye: currentEye, selected: false };
+
+function mockImageCapture() { // Used for auto-capture simulation
+    const base64 = captureFrame();
+    if (!base64) return;
+    
+    const newImage = { id: Date.now(), base64: base64, eye: currentEye, selected: false };
     capturedImages.push(newImage);
     renderCarousel();
     updateCaptureStatus();
 }
+
 function startAutoCapture() {
     if (autoCaptureInterval) clearInterval(autoCaptureInterval);
     autoCaptureInterval = setInterval(() => {
@@ -348,27 +383,32 @@ function stopAutoCapture() {
 }
 function toggleOdCapture() {
     const odToggleBtn = document.getElementById('autoCaptureToggleBtn');
-    const odStatusSpan = document.getElementById('odStatus');
+    // REMOVED: Status span update
+    
     isOdDetectionOn = !isOdDetectionOn;
     if (isOdDetectionOn) {
         odToggleBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
         odToggleBtn.classList.add('active');
-        odStatusSpan.textContent = 'ACTIVE';
+        // REMOVED: odStatusSpan update
         startAutoCapture();
     } else {
         odToggleBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
         odToggleBtn.classList.remove('active');
-        odStatusSpan.textContent = 'INACTIVE';
+        // REMOVED: odStatusSpan update
         stopAutoCapture();
     }
 }
 function updateCaptureStatus() {
     const leftCount = capturedImages.filter(img => img.eye === 'LEFT').length;
     const rightCount = capturedImages.filter(img => img.eye === 'RIGHT').length;
-    document.getElementById('imageCount').textContent = `L: ${leftCount} | R: ${rightCount}`;
-    document.querySelector('.capture-status p:first-child').innerHTML = 
-        `OPTIC DISC AUTO DETECTION: <span id="odStatus">${isOdDetectionOn ? 'ACTIVE' : 'INACTIVE'}</span>`;
+    
+    // MODIFICATION 1: Update the overlay element with full words
+    const imageCounterOverlay = document.getElementById('imageCountOverlay');
+    if (imageCounterOverlay) {
+        imageCounterOverlay.textContent = `LEFT: ${leftCount} | RIGHT: ${rightCount}`;
+    }
 }
+
 function toggleEyeSelection(eye) {
     currentEye = eye;
     updateEyeToggleUI();
@@ -559,19 +599,41 @@ function selectImageFromLightbox() {
     updateDeleteButtonCount(); // Update main page button count
 }
 
-// MODIFICATION 2: New function to delete image from lightbox
 function deleteImageFromLightbox() {
-    const currentImg = lightboxImageSet[lightboxCurrentIndex];
+    // Get the ID of the image currently being viewed
+    const currentImgId = lightboxImageSet[lightboxCurrentIndex].id; 
+    
     if (customConfirm(`Are you sure you want to delete this image?`)) {
-        // Remove from the main array
-        capturedImages = capturedImages.filter(img => img.id !== currentImg.id);
+        // Remove from the main capturedImages array
+        capturedImages = capturedImages.filter(img => img.id !== currentImgId);
         
         // Update capture status
         updateCaptureStatus();
         alertUser('Image deleted.');
         
-        // Close lightbox and re-render the underlying page
-        closeLightbox();
+        // MODIFICATION 2: Update the lightbox image set and index
+        
+        // Find the full set of images for the current eye to rebuild lightboxImageSet
+        const eye = lightboxImageSet[lightboxCurrentIndex].eye;
+        const newImageSet = capturedImages.filter(img => img.eye === eye);
+        
+        if (newImageSet.length === 0) {
+            // If the last image was deleted, close the lightbox
+            closeLightbox(); 
+            // Also ensure the main review page reflects the empty state immediately
+            if (currentPage === 3) renderReviewPage(); 
+            return;
+        }
+
+        lightboxImageSet = newImageSet;
+        
+        // Adjust the index: if we were at the end, jump to the new last image (which is now index - 1). Otherwise, stay at the current index (which is now the next image).
+        // Since we removed the image, the list shrinks, and the next image takes its place.
+        if (lightboxCurrentIndex >= lightboxImageSet.length) {
+            lightboxCurrentIndex = 0; // If deleting the last image, wrap to the beginning (or new last)
+        }
+        
+        updateLightboxImage(); // Show the next image in the updated set
     }
 }
 

@@ -54,11 +54,41 @@
    </section>
 
 <section id="page-capture" class="page" data-page="2">
-    <h2>Image Capture</h2>
-    
     <div class="camera-container">
      <video id="cameraFeed" autoplay playsinline></video>
-     <button id="optionsBtn" class="options-btn">Settings</button>
+     
+     <button id="optionsBtn" class="options-btn">CAMERA SETTINGS</button>
+     
+     <div id="cameraOptionsPanel" class="camera-options-panel" style="display:none;">
+        <h3>Camera Settings</h3>
+        <div class="setting-item">
+            <label for="cameraSelector">Select Camera:</label>
+            <select id="cameraSelector"></select>
+        </div>
+        <div class="setting-item">
+            <label for="torchToggle">Flash/LED:</label>
+            <button id="torchToggleBtn" class="primary-btn">ON</button>
+        </div>
+        <button id="closeOptionsBtn" class="primary-btn">Close</button>
+    </div>
+
+     <div class="controls-row video-controls-overlay">
+        
+        <div class="controls-row-counter">
+            <div id="imageCountOverlay" class="image-count-overlay">LEFT: 0 | RIGHT: 0</div>
+        </div>
+        
+        <div class="controls-row-buttons">
+            <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button> 
+            
+            <div class="eye-toggle-container control-btn">
+              <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
+              <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
+            </div>
+            
+            <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
+        </div>
+     </div>
     </div>
 
     <div id="cameraOptionsPanel" class="camera-options-panel" style="display:none;">
@@ -73,24 +103,7 @@
         </div>
         <button id="closeOptionsBtn" class="primary-btn">Close</button>
     </div>
-    <div class="capture-status">
-     <p>OD DETECTION: <span id="odStatus" data-state="OFF">INACTIVE</span></p>
-     <p>CAPTURED: <span id="imageCount">L: 0 | R: 0</span></p>
-    </div>
     
-    <div class="controls-row">
-     
-     <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button> 
-
-     <div class="eye-toggle-container control-btn">
-       <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
-       <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
-     </div>
-     
-     <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
-    </div>
-
-
     <div id="carousel-container">
      <div id="carousel">
       </div>

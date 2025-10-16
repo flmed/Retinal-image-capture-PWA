@@ -19,6 +19,12 @@ body {
     align-items: center;
     min-height: 100vh;
     color: var(--text-dark);
+
+    /* MODIFICATION 1: Prevent scrolling/overscrolling and touch actions */
+    overflow: hidden; 
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch; 
+    touch-action: pan-x pan-y; /* Allows panning but prevents double-tap zoom */
 }
 
 main {
@@ -91,6 +97,7 @@ main {
     padding: 30px;
     align-items: center;
     overflow-y: auto;
+    overscroll-behavior: contain;
     text-align: center;
     font-size: 1.1em;
     z-index: 10;
@@ -256,17 +263,25 @@ label[for="subjectId"] {
     PAGE 2: Image Capture (UNCHANGED)
     ---------------------------------- */
 #page-capture {
+    /* REMOVED: Title, so remove top padding */
+    padding-top: 0px; 
     justify-content: flex-start;
     padding-bottom: 90px;
 }
 .camera-container {
     width: 85%;
-    aspect-ratio: 3 / 5;
+    /*aspect-ratio: 3 / 5;*/
+    flex-grow: 1;
     position: relative;
     background: #111;
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 0px;
+
+    /* Ensure video takes full height and width of container */
+    display: flex; 
+    justify-content: center;
+    align-items: center;
 }
 .camera-container video {
     position: absolute;
@@ -280,20 +295,20 @@ label[for="subjectId"] {
 
 .options-btn {
     position: absolute;
-    bottom: 10px; /* Position at the bottom */
-    right: 10px; /* Position at the right */
-    padding: 2px 4px;
+    top: 10px; /* Upper position */
+    right: 10px; /* Right corner */
+    padding: 5px 10px;
     border-radius: 5px;
-    background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent black background */
+    background-color: rgba(0, 0, 0, 0.6);
     color: white;
-    font-size: 0.5em; /* Simple, small text */
+    font-size: 0.9em; 
     font-weight: 500;
     line-height: 1;
     z-index: 50;
-    border: none; /* No outer border */
+    border: none;
     cursor: pointer;
     text-transform: uppercase;
-    box-shadow: none; /* Remove any default box shadow */
+    box-shadow: none;
 }
 
 .camera-options-panel {
@@ -343,59 +358,129 @@ label[for="subjectId"] {
     margin-top: 10px;
 }
 
-.capture-status {
-    display: flex;
-    justify-content: space-around;
-    width: 95%;
-    margin: 2px 0 2px 0; 
-    padding: 2px 0;
-    font-size: 1em;
-    font-weight: 500;
-    border-bottom: 1px solid var(--border-color);
+/* NEW: Overlay for Image Counter (MODIFICATION 2) */
+.image-count-overlay {
+    background-color: transparent;
+    color: white;
+    font-size: 0.8em; /* Smaller text */
+    font-weight: 700;
+    padding: 0; 
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+    text-align: center;
+    display: inline-block; /* Allows the counter to be centered in its container */
 }
-#odStatus { font-weight: 700; }
-#odStatus[data-state="INACTIVE"] { color: var(--danger-color); }
-#odStatus[data-state="ACTIVE"] { color: var(--success-color); }
-.controls-row {
+
+
+/* NEW: Controls Row Overlay (MODIFICATION 1) */
+.video-controls-overlay {
+    position: absolute;
+    bottom: 0; 
+    left: 0;
+    width: 100%; 
+    padding: 10px 15px; 
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.4); 
+    z-index: 40;
+    
+    display: flex;
+    flex-direction: column; /* Stack the counter row and button row vertically */
+    align-items: center;
+    gap: 8px; /* Reduced space between the two new rows */
+}
+/* NEW: Style for the Image Counter's dedicated row */
+.controls-row-counter {
+    width: 100%; /* Spans full width */
+    text-align: center;
+    padding-bottom: 5px; /* Separator space above the buttons */
+}
+
+.controls-row-top {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr; /* Auto-size the middle for counter */
+    gap: 15px;
+    width: 100%; 
+}
+
+/* MODIFIED: Button Row (Second row - 3 equal columns) */
+.controls-row-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr; /* 3 equal columns for the buttons */
+    gap: 15px;
+    width: 100%; 
+    margin: 0;
+}
+
+/*.controls-row {
+    /* Reuse existing controls-row grid layout 
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 15px;
-    width: 95%;
-    margin: 15px 0;
+    width: 100%; /* Now takes full width of the overlay
+    margin: 0;
+}*/
+
+.controls-row-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 15px;
+    width: 100%; 
+    margin: 0;
 }
+
+/* Ensure buttons are styled for the new overlay context */
 .control-btn {
     width: 100%;
     padding: 2px 5px;
     font-size: 0.9em;
     font-weight: 600;
 }
+
 .eye-toggle-container {
-    display: flex;
+    width: 100%; 
+    max-width: none; 
+    margin: 0;
+    
+    /* NEW: Add a clear background and rounding for the container */
+    background-color: white; /* Clear background */
     border-radius: 8px;
-    overflow: hidden;
-    height: 48px; 
-    padding: 0; 
-    border: 1px solid var(--primary-color);
-    background-color: var(--background-light);
+    display: flex; /* Inherited from .controls-row-buttons grid cell, but ensures internal buttons behave */
+    overflow: hidden; /* Contains the rounded corners */
+    height: 100%; /* Take up the full height available in the grid cell */
+    min-height: 35px; /* Ensure a minimum size */
 }
+
 .toggle-side-btn {
     flex-grow: 1;
-    padding: 0; 
+    /* Increase padding to make the text slightly larger vertically */
+    padding: 8px 5px; 
     border: none; 
     border-radius: 0; 
     min-height: unset; 
-    font-size: 0.9em;
+    font-size: 0.9em; 
     font-weight: 700;
     text-transform: uppercase;
-    background-color: transparent; 
-    color: var(--text-dark);
+    
+    /* MODIFIED: Default state is now distinct (dark gray text on white background) */
+    background-color: white; 
+    color: var(--secondary-color); /* Use a noticeable gray color */
+    
+    transition: background-color 0.2s, color 0.2s; /* Smooth transition */
 }
+
 .toggle-side-btn.active {
     background-color: var(--primary-color);
     color: white;
+    /* Add a subtle shadow for the active button to pop */
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
 }
-#eyeToggleLeft { border-radius: 8px 0 0 8px; }
-#eyeToggleRight { border-radius: 0 8px 8px 0; }
+
+#eyeToggleLeft { border-radius: 0; } 
+#eyeToggleRight { border-radius: 0; }
+
+/* Re-apply rounding to the buttons to match the container's rounding where applicable */
+.eye-toggle-container > #eyeToggleLeft { border-radius: 8px 0 0 8px; }
+.eye-toggle-container > #eyeToggleRight { border-radius: 0 8px 8px 0; }
+
 #autoCaptureToggleBtn.active {
     background-color: var(--success-color); 
     box-shadow: 0 0 10px rgba(40, 167, 69, 0.7);

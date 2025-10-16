@@ -560,14 +560,15 @@ label[for="subjectId"] {
 
 .review-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px; 
+    grid-template-columns: 1fr 1fr; /* Two equal columns */
+    gap: 10px; /* Space between grid items */
     background-color: var(--background-light);
     border-radius: 8px;
     padding: 10px;
     overflow-y: auto;
     flex-grow: 1;
-    align-content: start; /* MODIFICATION 1: Prevents items from stretching/bunching */
+    /* align-content: start; ensures items stick to the top */
+    align-content: start; 
 }
 
 #review-grid-left {
@@ -577,9 +578,13 @@ label[for="subjectId"] {
     background-color: #f8f9fa;
 }
 
+/* MODIFIED: The core fix for overlap. The wrapper defines the grid item's space. */
 .review-image-wrapper {
     position: relative;
-    aspect-ratio: 1 / 1;
+    /* Use padding-bottom trick for a fixed 1:1 aspect ratio */
+    padding-bottom: 100%; 
+    height: 0; 
+    width: 100%;
     overflow: hidden;
     border-radius: 8px;
     cursor: pointer;
@@ -587,16 +592,50 @@ label[for="subjectId"] {
     transition: border 0.2s, box-shadow 0.2s;
 }
 
-.review-image-wrapper img {
+.image-label-thumbnail {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 0.7em; /* Small text */
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 0 5px 0 8px; /* Round only on top right, match bottom left of image wrapper */
+    z-index: 50;
+}
+
+/* Ensure the image and overlays are absolutely positioned within the wrapper */
+.review-image-wrapper img,
+.review-image-wrapper .selection-overlay,
+.review-image-wrapper .image-label-thumbnail {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    display: block;
 }
 
 .review-image-wrapper.selected {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px var(--primary-color), 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+.review-image-wrapper .image-label-thumbnail {
+    height: fit-content; /* Use height: auto for the text label */
+    width: fit-content; /* Use width: auto for the text label */
+    bottom: 0;
+    left: 0;
+    top: auto; /* Reset top positioning */
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 0.7em;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 0 5px 0 8px;
+    z-index: 50;
+    /* Redundant settings removed, using fit-content from above */
 }
 
 .selection-overlay {
@@ -615,10 +654,6 @@ label[for="subjectId"] {
     font-weight: 700;
     pointer-events: none;
     z-index: 50;
-}
-
-.review-image-wrapper.selected .selection-overlay {
-    display: flex;
 }
 
 
@@ -644,6 +679,16 @@ label[for="subjectId"] {
     border-bottom: 2px solid var(--primary-color);
     padding-bottom: 5px;
 }
+
+.analysis-image-wrapper {
+    position: relative;
+    width: 120px; /* Match the size of the image */
+    height: 120px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
 .analysis-grid {
     display: flex; /* MODIFICATION 3: Use flex for carousel */
     overflow-x: auto; /* MODIFICATION 3: Allow horizontal scrolling */
@@ -661,11 +706,11 @@ label[for="subjectId"] {
     display: none; /* Hide scrollbar for Chrome/Safari/Opera */
 }
 .analysis-grid img {
-    width: 120px;
-    height: 120px;
+    width: 100%; /* Fill the wrapper */
+    height: 100%;
     object-fit: cover;
     border-radius: 4px;
-    flex-shrink: 0; /* MODIFICATION 3: Prevent images from shrinking */
+    /* Removed flex-shrink: 0; as it is now on the wrapper */
 }
 .analysis-result {
     font-weight: 700;
@@ -762,33 +807,14 @@ textarea {
 .overview-section p, .overview-section strong {
     font-size: 1em;
 }
-.review-carousel-group {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 15px;
-}
-.overview-image-section {
-    flex: 1;
-    min-width: 0;
-}
-.overview-image-section h4 {
-    margin: 0 0 5px 0;
-    font-size: 1em;
-    color: var(--secondary-color);
-    text-align: center;
-}
-.overview-carousel {
-    /* Reusing analysis-grid for carousel style */
-    height: 100px; 
-    padding: 5px;
-}
-.overview-carousel img {
-    width: 90px;
-    height: 90px;
+
+#overview-gallery .analysis-image-wrapper img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-    border-radius: 4px;
-    flex-shrink: 0;
+    display: block; /* Important for preventing alignment gaps */
 }
+
 .overview-tlx-item {
     display: flex;
     justify-content: space-between;
@@ -878,17 +904,20 @@ textarea {
     cursor: pointer;
 }
 #lightbox-info {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    position: static; /* No longer absolute */
+    transform: none; /* No longer centered via transform */
     color: white;
-    background: rgba(0,0,0,0.5);
+    background: transparent; /* Remove background, let the action bar handle it */
     padding: 5px 15px;
     border-radius: 10px;
-    font-size: 1.2em;
+    font-size: 1.1em; /* Slightly smaller than before */
     font-weight: 500;
+    flex-grow: 1; /* Allows it to take up the middle space */
+    text-align: center;
+    align-self: center; /* Vertically center */
+    white-space: nowrap; /* Prevent wrapping */
 }
+
 .lightbox-nav {
     position: absolute;
     top: 50%;
@@ -908,8 +937,10 @@ textarea {
 }
 .lightbox-actions {
     display: flex;
-    gap: 20px;
+    gap: 15px; /* Reduced gap */
     margin-top: 20px;
+    width: 90%; /* Ensure it spans well */
+    max-width: 500px;
 }
 .lightbox-actions button {
     min-width: 120px;

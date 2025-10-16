@@ -23,6 +23,12 @@ let isOdDetectionOn = false;
 let autoCaptureInterval = null; 
 const MAX_CAROUSEL_IMAGES = 5;
 
+// NEW: Counters for automatic naming
+let manualLeftCount = 0;
+let manualRightCount = 0;
+let autoLeftCount = 0;
+let autoRightCount = 0;
+
 // MODIFICATION: New state for camera options
 let availableCameras = [];
 let currentDeviceId = null;
@@ -348,20 +354,62 @@ function captureFrame() {
 }
 
 function manualImageCapture() {
-    const base64 = captureFrame();
-    if (!base64) return;
+    // Determine the new image name
+    const type = 'MANUAL';
+    let count;
+    if (currentEye === 'LEFT') {
+        manualLeftCount++;
+        count = manualLeftCount;
+    } else {
+        manualRightCount++;
+        count = manualRightCount;
+    }
+    const name = `${currentEye.charAt(0)}M${count}`; // e.g., LM1, RM2
     
-    const newImage = { id: Date.now(), base64: base64, eye: currentEye, selected: false };
+    // For mock-up purposes, generate a mock URL with the name
+    const size = 200;
+    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=${name}`;
+    const base64 = captureFrame() || mockUrl; // Use real capture or mock URL
+
+    const newImage = { 
+        id: Date.now(), 
+        base64: base64, 
+        eye: currentEye, 
+        selected: false,
+        name: name, // Store the name
+        type: type // Store the type
+    };
     capturedImages.push(newImage);
     renderCarousel();
     updateCaptureStatus();
 }
 
-function mockImageCapture() { // Used for auto-capture simulation
-    const base64 = captureFrame();
-    if (!base64) return;
+function mockImageCapture() { 
+    // Determine the new image name
+    const type = 'AUTO';
+    let count;
+    if (currentEye === 'LEFT') {
+        autoLeftCount++;
+        count = autoLeftCount;
+    } else {
+        autoRightCount++;
+        count = autoRightCount;
+    }
+    const name = `${currentEye.charAt(0)}A${count}`; // e.g., LA1, RA2
     
-    const newImage = { id: Date.now(), base64: base64, eye: currentEye, selected: false };
+    // For mock-up purposes, generate a mock URL with the name
+    const size = 200;
+    const mockUrl = `https://placehold.co/${size}x${size}/999999/FFFFFF?text=${name}`;
+    const base64 = captureFrame() || mockUrl; // Use real capture or mock URL
+    
+    const newImage = { 
+        id: Date.now(), 
+        base64: base64, 
+        eye: currentEye, 
+        selected: false,
+        name: name, // Store the name
+        type: type // Store the type
+    };
     capturedImages.push(newImage);
     renderCarousel();
     updateCaptureStatus();
@@ -437,8 +485,15 @@ function renderCarousel() {
         item.setAttribute('data-id', img.id);
         const image = document.createElement('img');
         image.src = img.base64;
-        image.alt = `${img.eye} Image ${index + 1}`; 
+        image.alt = `${img.eye} Image ${img.name}`; 
+        
+        // NEW: Image label element
+        const label = document.createElement('div');
+        label.className = 'image-label-thumbnail';
+        label.textContent = img.name; // Display the name (e.g., LM1)
+        
         item.appendChild(image);
+        item.appendChild(label); // Append label
         carousel.appendChild(item);
     });
     carousel.scrollLeft = carousel.scrollWidth;
@@ -487,11 +542,17 @@ function renderReviewPage() {
         };
         const image = document.createElement('img');
         image.src = img.base64;
-        image.alt = `${img.eye} Image`;
+        image.alt = `${img.eye} Image ${img.name}`;
+
+        const label = document.createElement('div');
+        label.className = 'image-label-thumbnail';
+        label.textContent = img.name;
+
         const overlay = document.createElement('div');
         overlay.className = 'selection-overlay';
         overlay.innerHTML = '&#x2713;';
         wrapper.appendChild(image);
+        wrapper.appendChild(label); // Append label
         wrapper.appendChild(overlay);
         return wrapper;
     };
@@ -546,6 +607,18 @@ function deleteSelectedImages() {
     }
 }
 
+function clearAllImages() {
+    if (capturedImages.length === 0) return;
+    
+    if (customConfirm(`Are you sure you want to delete ALL ${capturedImages.length} captured images? This cannot be undone.`)) {
+        capturedImages = [];
+        isSelectionMode = false;
+        renderReviewPage();
+        updateCaptureStatus();
+        alertUser(`All images deleted.`);
+    }
+}
+
 
 // --- Lightbox Functionality (UNCHANGED) ---
 
@@ -570,9 +643,11 @@ function closeLightbox() {
 function updateLightboxImage() {
     const img = lightboxImageSet[lightboxCurrentIndex];
     document.getElementById('lightbox-image').src = img.base64;
-    // MODIFICATION 2: Update info display
-    document.getElementById('lightbox-info').textContent = `EYE: ${img.eye}`;
-    // MODIFICATION 2: Update select button appearance
+    
+    // MODIFIED: Update info display to include image name
+    document.getElementById('lightbox-info').textContent = `EYE: ${img.eye} (${img.name})`;
+    
+    // Update select button appearance
     const selectBtn = document.getElementById('lightboxSelectBtn');
     selectBtn.textContent = img.selected ? 'Deselect' : 'Select';
     selectBtn.classList.toggle('active', img.selected);
@@ -668,6 +743,30 @@ function renderAnalysisPage() {
         imageEl.src = img.base64;
         gridRight.appendChild(imageEl);
     });
+
+    const appendImageWithLabel = (grid, img) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'analysis-image-wrapper'; // Need a wrapper for label positioning
+        
+        const imageEl = document.createElement('img');
+        imageEl.src = img.base64;
+        imageEl.alt = `${img.eye} Image ${img.name}`;
+        
+        // NEW: Image label element
+        const label = document.createElement('div');
+        label.className = 'image-label-thumbnail';
+        label.textContent = img.name;
+        
+        wrapper.appendChild(imageEl);
+        wrapper.appendChild(label);
+        grid.appendChild(wrapper);
+    };
+
+    gridLeft.innerHTML = '';
+    gridRight.innerHTML = '';
+
+    leftSubset.forEach(img => appendImageWithLabel(gridLeft, img));
+    rightSubset.forEach(img => appendImageWithLabel(gridRight, img));
     
     // Show current stored results (if run previously), otherwise hide
     document.getElementById('analysis-result-left').textContent = analysisResults.left;
@@ -752,9 +851,22 @@ function renderOverviewPage() {
             container.style.justifyContent = 'center';
         } else {
             images.forEach(img => {
+                // MODIFICATION: Wrap the image to position the label
+                const wrapper = document.createElement('div');
+                wrapper.className = 'analysis-image-wrapper'; // Use existing style for wrapper size/label positioning
+
                 const imageEl = document.createElement('img');
                 imageEl.src = img.base64;
-                container.appendChild(imageEl);
+                
+                // NEW: Image label element
+                const label = document.createElement('div');
+                label.className = 'image-label-thumbnail';
+                label.textContent = img.name;
+
+                wrapper.appendChild(imageEl);
+                wrapper.appendChild(label);
+                container.appendChild(wrapper);
+                // END MODIFICATION
             });
             container.style.justifyContent = 'flex-start';
         }
@@ -772,8 +884,8 @@ function renderOverviewPage() {
     tlxContainer.innerHTML = '';
     
     if (Object.keys(tlxAnswers).length === 0) {
-         // Should not happen if navigation is correct, but re-capture if necessary
-         captureTLXAnswers(); 
+            // Should not happen if navigation is correct, but re-capture if necessary
+            captureTLXAnswers(); 
     }
 
     TLX_DIMENSIONS.forEach((dim, index) => {
@@ -844,6 +956,12 @@ function startNewSession() {
     isOdDetectionOn = false;
     currentEye = 'RIGHT';
 
+    // RESET NEW COUNTERS
+    manualLeftCount = 0;
+    manualRightCount = 0;
+    autoLeftCount = 0;
+    autoRightCount = 0;
+
     // MODIFICATION: Reset new state variables
     analysisResults = { left: 'Not yet run.', right: 'Not yet run.' };
     tlxAnswers = {}; 
@@ -887,6 +1005,7 @@ function setupEventListeners() {
     document.getElementById('selectMultipleBtn')?.addEventListener('click', toggleSelectionMode);
     document.getElementById('deleteSelectedBtn')?.addEventListener('click', deleteSelectedImages);
     document.getElementById('backFromReviewBtn')?.addEventListener('click', () => navigateTo(2));
+    document.getElementById('clearAllImagesBtn')?.addEventListener('click', clearAllImages);
     document.getElementById('toAnalyzeBtn')?.addEventListener('click', () => navigateTo(4));
 
     // Analysis Page (Step 4)
@@ -914,6 +1033,28 @@ function setupEventListeners() {
     document.getElementById('lightbox-prev')?.addEventListener('click', showPrevImage);
     document.getElementById('lightboxSelectBtn')?.addEventListener('click', selectImageFromLightbox);
     document.getElementById('lightboxDeleteBtn')?.addEventListener('click', deleteImageFromLightbox);
+
+    // NEW: Swipe functionality for lightbox
+    const lightboxOverlay = document.getElementById('lightbox-overlay');
+    let touchStartX = 0;
+
+    lightboxOverlay?.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+    });
+
+    lightboxOverlay?.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        const swipeDistance = touchEndX - touchStartX;
+        const swipeThreshold = 50; // Minimum distance for a swipe
+
+        if (Math.abs(swipeDistance) > swipeThreshold) {
+            if (swipeDistance > 0) {
+                showPrevImage(); // Swiping right goes to previous image
+            } else {
+                showNextImage(); // Swiping left goes to next image
+            }
+        }
+    });
 }
 
 

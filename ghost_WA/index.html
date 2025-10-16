@@ -121,6 +121,7 @@
 
     <div class="review-controls-top">
      <button id="selectMultipleBtn" class="secondary-btn">Toggle Selection</button>
+     <button id="clearAllImagesBtn" class="danger-btn">Clear All Images</button>
      <button id="deleteSelectedBtn" class="danger-btn" disabled>Delete Selected (0)</button>
     </div>
 
@@ -234,14 +235,14 @@
   </div>
  </div>
 
- <div id="lightbox-overlay" style="display: none;">
+<div id="lightbox-overlay" style="display: none;">
     <span id="lightbox-close">&times;</span>
-    <div id="lightbox-info"></div>
     <div id="lightbox-prev" class="lightbox-nav">&#10094;</div>
     <img id="lightbox-image" src="" alt="Enlarged view">
     <div id="lightbox-next" class="lightbox-nav">&#10095;</div>
     <div class="lightbox-actions">
         <button id="lightboxSelectBtn" class="secondary-btn">Select</button>
+        <div id="lightbox-info"></div> 
         <button id="lightboxDeleteBtn" class="danger-btn">Delete</button>
     </div>
  </div>

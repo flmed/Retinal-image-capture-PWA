@@ -261,6 +261,48 @@ button {
     margin: 0;
     color: var(--text-dark);
 }
+
+/* Container for the model status on the Info Page */
+.model-status-info-page {
+    width: 100%;
+    max-width: 600px;
+    margin: 10px auto 20px auto;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--background-light);
+}
+
+.model-status-info-page p {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+/* Individual status line (icon + text) */
+.model-status-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 1.0em;
+}
+
+/* Style for the Font Awesome circle icon */
+.status-circle {
+    font-size: 16px; 
+}
+
+/* Status Colors */
+.status-circle.red {
+    color: var(--danger-color); /* Uses the existing --danger-color for RED */
+}
+.status-circle.orange {
+    color: orange; /* ORANGE for loading */
+}
+.status-circle.green {
+    color: var(--success-color); /* Uses the existing --success-color for GREEN */
+}
+
 /* New and existing input styling adjustments */
 label[for="operatorId"],
 label[for="subjectId"] {

@@ -11,6 +11,27 @@ let isOdDetectionOn = false;
 let autoCaptureInterval = null; 
 const MAX_CAROUSEL_IMAGES = 5;
 
+// TensorFlow.js model variables
+let objectDetectionModel = null;
+let classifierModel = null;
+let pretrainedClassifierModel = null;
+const objectDetectionModelUrl = 'models/objectDetection/model.json';
+const classifierModelUrl = 'models/classificationLight/model.json';
+const pretrainedClassifierModelUrl = 'models/mobileNet/model.json';
+
+// NEW: DOM Elements for Model Status on Info Page
+let objDetStatusIcon;
+let objDetStatusText;
+let classifierStatusIcon;
+let classifierStatusText;
+
+// NEW: Model Status Constants
+const STATUS = {
+    RED: { icon: 'fa-times-circle', color: 'red', text: 'ERROR' },
+    ORANGE: { icon: 'fa-circle-notch fa-spin', color: 'orange', text: 'Loading...' },
+    GREEN: { icon: 'fa-check-circle', color: 'green', text: 'Loaded' }
+};
+
 // NEW: Counters for automatic naming
 let manualLeftCount = 0;
 let manualRightCount = 0;
@@ -88,6 +109,58 @@ function validateStep1() {
     return true;
 }
 
+/**
+ * Grabs the necessary DOM elements for status display on the Info Page.
+ */
+function getInfoPageStatusElements() {
+    const objDetContainer = document.getElementById('obj-det-status');
+    const classifierContainer = document.getElementById('classifier-status');
+    
+    if (objDetContainer) {
+        // Find the icon and text span within the container
+        objDetStatusIcon = objDetContainer.querySelector('.status-circle');
+        objDetStatusText = objDetContainer.querySelector('.status-text');
+    }
+    if (classifierContainer) {
+        classifierStatusIcon = classifierContainer.querySelector('.status-circle');
+        classifierStatusText = classifierContainer.querySelector('.status-text');
+    }
+}
+
+/**
+ * Updates the model status display (icon and text).
+ * @param {string} modelKey - 'objectDetection' or 'classifier'
+ * @param {Object} status - One of the STATUS constants (RED, ORANGE, GREEN)
+ */
+function updateModelStatus(modelKey, status) {
+    let icon, text;
+
+    if (modelKey === 'objectDetection') {
+        icon = objDetStatusIcon;
+        text = objDetStatusText;
+    } else if (modelKey === 'classifier') {
+        icon = classifierStatusIcon;
+        text = classifierStatusText;
+    }
+
+    if (icon && text) {
+        // Clear existing classes (like fa-spin) and set new ones
+        icon.className = 'status-circle fas';
+        if (status.icon.includes('fa-spin')) {
+            icon.classList.add('fa-circle-notch', 'fa-spin');
+        } else {
+            icon.classList.add(status.icon);
+        }
+        
+        // Remove old color classes and add the new one
+        icon.classList.remove('red', 'orange', 'green');
+        icon.classList.add(status.color);
+        
+        // Update text
+        text.textContent = status.text;
+    }
+}
+
 function navigateTo(step) {
     if (currentPage === 1 && step > 1 && !validateStep1()) {
         return;
@@ -140,6 +213,57 @@ function navigateTo(step) {
         renderOverviewPage();
     }
 }
+
+async function loadModels() {
+    // 1. Initial State: Set both to ORANGE (Loading)
+    updateModelStatus('objectDetection', STATUS.ORANGE);
+    updateModelStatus('classifier', STATUS.ORANGE);
+    
+    // Load models in parallel to speed up startup time
+    const results = await Promise.allSettled([
+        // Auto Capture Object Detection Model (tf.loadGraphModel)
+        (async () => {
+            const model = await tf.loadGraphModel(objectDetectionModelUrl);
+            objectDetectionModel = model;
+            return { modelKey: 'objectDetection', model };
+        })(),
+        
+        // Optic Disc Edema Classification Model (tf.loadLayersModel)
+        (async () => {
+            const model = await tf.loadLayersModel(classifierModelUrl);
+            classifierModel = model;
+            return { modelKey: 'classifier', model };
+        })(),
+        
+        // Pretrained classifier (load in background, not tracked on status bar)
+        tf.loadLayersModel(pretrainedClassifierModelUrl) 
+    ]);
+
+    // 2. Update status based on results
+    results.forEach(result => {
+        const modelKey = result.value ? result.value.modelKey : null;
+
+        if (modelKey) {
+             if (result.status === 'fulfilled') {
+                console.log(`${modelKey} model loaded successfully.`);
+                updateModelStatus(modelKey, STATUS.GREEN);
+            } else {
+                console.error(`Error loading ${modelKey} model:`, result.reason);
+                updateModelStatus(modelKey, STATUS.RED);
+            }
+        } else if (result.status === 'fulfilled' && result.value) {
+            pretrainedClassifierModel = result.value;
+            console.log('Pretrained classifier model loaded.');
+        } else if (result.status === 'rejected') {
+            // Log other errors (like the pretrained model)
+            console.error('Error in background model loading:', result.reason);
+        }
+    });
+
+    // NOTE: The detection loop (detectObjects) is NOT started here. 
+    // It should be started when the user navigates to the Capture page (Step 2).
+}
+
 
 // --- Camera & Capture Logic (MODIFIED startCamera) ---
 
@@ -1050,7 +1174,13 @@ function setupEventListeners() {
 
 // --- Initialization ---
 window.addEventListener('load', () => {
-    initFirebase();
-    setupEventListeners();
+// 1. Get the new status DOM elements
+    getInfoPageStatusElements();
+    
+    // 2. Start model loading immediately
+    loadModels();
+    
+    // 3. Keep existing setup logic
+    setupEventListeners(); 
     updateStepNav();
 });

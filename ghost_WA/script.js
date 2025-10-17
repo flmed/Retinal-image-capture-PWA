@@ -1,16 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, addDoc, onSnapshot, collection, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-// --- Global Firebase Variables ---
-window.db = null;
-window.auth = null;
-window.userId = null;
-window.appId = null;
-window.isAuthReady = false;
 let mediaStream = null; // To hold the camera stream
-
-setLogLevel('Debug');
 
 // --- Application State ---
 let currentPage = 1;
@@ -1066,34 +1054,3 @@ window.addEventListener('load', () => {
     setupEventListeners();
     updateStepNav();
 });
-
-async function initFirebase() {
-    try {
-        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        if (Object.keys(firebaseConfig).length === 0) {
-            console.error("Firebase configuration is missing.");
-            return;
-        }
-        const firebaseApp = initializeApp(firebaseConfig);
-        window.db = getFirestore(firebaseApp);
-        window.auth = getAuth(firebaseApp);
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        if (initialAuthToken) {
-            await signInWithCustomToken(window.auth, initialAuthToken);
-        } else {
-            await signInAnonymously(window.auth);
-        }
-        onAuthStateChanged(window.auth, (user) => {
-            if (user) {
-                window.userId = user.uid;
-            } else {
-                window.userId = crypto.randomUUID();
-            }
-            window.isAuthReady = true;
-            console.log("Firebase Auth Ready. User ID:", window.userId);
-        });
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-    }
-}

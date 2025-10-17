@@ -1,16 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, addDoc, onSnapshot, collection, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-// --- Global Firebase Variables ---
-window.db = null;
-window.auth = null;
-window.userId = null;
-window.appId = null;
-window.isAuthReady = false;
 let mediaStream = null; // To hold the camera stream
-
-setLogLevel('Debug');
 
 // --- Application State ---
 let currentPage = 1;
@@ -19,9 +7,37 @@ let capturedImages = [];
 // MODIFICATION: Add operatorId to subjectInfo
 let subjectInfo = { operatorId: '', id: '', notes: '' };
 let isSelectionMode = false;
-let isOdDetectionOn = false; 
+let isAutoCaptureActive = false; // Renamed from isOdDetectionOn
 let autoCaptureInterval = null; 
 const MAX_CAROUSEL_IMAGES = 5;
+
+// TensorFlow.js model variables
+let objectDetectionModel = null;
+let classifierModel = null;
+let pretrainedClassifierModel = null;
+const objectDetectionModelUrl = 'models/objectDetection/model.json';
+const classifierModelUrl = 'models/classificationLight/model.json';
+const pretrainedClassifierModelUrl = 'models/mobileNet/model.json';
+
+// NEW: DOM Elements for Model Status on Info Page
+let objDetStatusIcon;
+let objDetStatusText;
+let classifierStatusIcon;
+let classifierStatusText;
+
+// NEW: Model Status Constants
+const STATUS = {
+    RED: { icon: 'fa-times-circle', color: 'red', text: 'ERROR' },
+    ORANGE: { icon: 'fa-circle-notch fa-spin', color: 'orange', text: 'Loading...' },
+    GREEN: { icon: 'fa-check-circle', color: 'green', text: 'Loaded' }
+};
+
+// --- NEW: Object Detection Loop (replaces fake auto capture) ---
+let lastActionTime = 0;
+const detectionDelay = 300; // Minimum ms between saved frames
+const detectionThreshold = 0.8; // Customize if needed
+let detectionActive = false;
+let isOdDetectionVisible = false;
 
 // NEW: Counters for automatic naming
 let manualLeftCount = 0;
@@ -35,11 +51,19 @@ let currentDeviceId = null;
 let isTorchOn = true; // Default torch ON behavior
 
 // Lightbox state
-let lightboxImageSet = [];
+let lightboxImageSetet = [];
 let lightboxCurrentIndex = 0;
 
 // MODIFICATION: New state to store analysis and TLX results
-let analysisResults = { left: 'Not yet run.', right: 'Not yet run.' };
+let analysisResults = { 
+    left: 'Awaiting classification...', 
+    right: 'Awaiting classification...', 
+    leftClass: '', 
+    rightClass: '' 
+};
+const CLASSIFICATION_THRESHOLD = 0.5;
+const TOP_K_IMAGES = 5;
+
 let tlxAnswers = {};
 
 // Official NASA TLX Questions
@@ -100,6 +124,58 @@ function validateStep1() {
     return true;
 }
 
+/**
+ * Grabs the necessary DOM elements for status display on the Info Page.
+ */
+function getInfoPageStatusElements() {
+    const objDetContainer = document.getElementById('obj-det-status');
+    const classifierContainer = document.getElementById('classifier-status');
+    
+    if (objDetContainer) {
+        // Find the icon and text span within the container
+        objDetStatusIcon = objDetContainer.querySelector('.status-circle');
+        objDetStatusText = objDetContainer.querySelector('.status-text');
+    }
+    if (classifierContainer) {
+        classifierStatusIcon = classifierContainer.querySelector('.status-circle');
+        classifierStatusText = classifierContainer.querySelector('.status-text');
+    }
+}
+
+/**
+ * Updates the model status display (icon and text).
+ * @param {string} modelKey - 'objectDetection' or 'classifier'
+ * @param {Object} status - One of the STATUS constants (RED, ORANGE, GREEN)
+ */
+function updateModelStatus(modelKey, status) {
+    let icon, text;
+
+    if (modelKey === 'objectDetection') {
+        icon = objDetStatusIcon;
+        text = objDetStatusText;
+    } else if (modelKey === 'classifier') {
+        icon = classifierStatusIcon;
+        text = classifierStatusText;
+    }
+
+    if (icon && text) {
+        // Clear existing classes (like fa-spin) and set new ones
+        icon.className = 'status-circle fas';
+        if (status.icon.includes('fa-spin')) {
+            icon.classList.add('fa-circle-notch', 'fa-spin');
+        } else {
+            icon.classList.add(status.icon);
+        }
+        
+        // Remove old color classes and add the new one
+        icon.classList.remove('red', 'orange', 'green');
+        icon.classList.add(status.color);
+        
+        // Update text
+        text.textContent = status.text;
+    }
+}
+
 function navigateTo(step) {
     if (currentPage === 1 && step > 1 && !validateStep1()) {
         return;
@@ -107,7 +183,11 @@ function navigateTo(step) {
     
     if (currentPage === 2 && step !== 2) {
         stopCamera();
-        stopAutoCapture(); 
+        // REMOVED: stopAutoCapture(); which caused the error
+
+        // ADDED: Explicitly turn off detection states when leaving the page
+        isOdDetectionVisible = false;
+        isAutoCaptureActive = false;
     }
 
     // MODIFICATION: Add new page 6 to the list of pages to deactivate
@@ -152,6 +232,57 @@ function navigateTo(step) {
         renderOverviewPage();
     }
 }
+
+async function loadModels() {
+    // 1. Initial State: Set both to ORANGE (Loading)
+    updateModelStatus('objectDetection', STATUS.ORANGE);
+    updateModelStatus('classifier', STATUS.ORANGE);
+    
+    // Load models in parallel to speed up startup time
+    const results = await Promise.allSettled([
+        // Auto Capture Object Detection Model (tf.loadGraphModel)
+        (async () => {
+            const model = await tf.loadGraphModel(objectDetectionModelUrl);
+            objectDetectionModel = model;
+            return { modelKey: 'objectDetection', model };
+        })(),
+        
+        // Optic Disc Edema Classification Model (tf.loadLayersModel)
+        (async () => {
+            const model = await tf.loadLayersModel(classifierModelUrl);
+            classifierModel = model;
+            return { modelKey: 'classifier', model };
+        })(),
+        
+        // Pretrained classifier (load in background, not tracked on status bar)
+        tf.loadLayersModel(pretrainedClassifierModelUrl) 
+    ]);
+
+    // 2. Update status based on results
+    results.forEach(result => {
+        const modelKey = result.value ? result.value.modelKey : null;
+
+        if (modelKey) {
+             if (result.status === 'fulfilled') {
+                console.log(`${modelKey} model loaded successfully.`);
+                updateModelStatus(modelKey, STATUS.GREEN);
+            } else {
+                console.error(`Error loading ${modelKey} model:`, result.reason);
+                updateModelStatus(modelKey, STATUS.RED);
+            }
+        } else if (result.status === 'fulfilled' && result.value) {
+            pretrainedClassifierModel = result.value;
+            console.log('Pretrained classifier model loaded.');
+        } else if (result.status === 'rejected') {
+            // Log other errors (like the pretrained model)
+            console.error('Error in background model loading:', result.reason);
+        }
+    });
+
+    // NOTE: The detection loop (detectObjects) is NOT started here. 
+    // It should be started when the user navigates to the Capture page (Step 2).
+}
+
 
 // --- Camera & Capture Logic (MODIFIED startCamera) ---
 
@@ -333,20 +464,25 @@ function captureFrame() {
         return null;
     }
     
+    // ✅ FIX: Use video.videoWidth and video.videoHeight for the highest 
+    // resolution, non-distorted frame.
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    if (videoWidth === 0 || videoHeight === 0) {
+        console.warn("Video dimensions are zero, stream might not be ready. Falling back to default.");
+    }
+    
     // Create a temporary canvas element
     const canvas = document.createElement('canvas');
     
-    // Determine the target resolution for the captured image (e.g., matching the video track settings)
-    const videoTrack = mediaStream.getVideoTracks()[0];
-    const { width, height } = videoTrack.getSettings();
-
-    // Use a fallback resolution if settings are unavailable
-    canvas.width = width || 1280;
-    canvas.height = height || 720;
+    // Set canvas dimensions to the native video resolution (or the requested 1280x960 fallback)
+    canvas.width = videoWidth || 1280;
+    canvas.height = videoHeight || 960; 
     
     const context = canvas.getContext('2d');
     
-    // Draw the current video frame onto the canvas
+    // Draw the current video frame onto the canvas without distortion
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     // Convert the canvas content to a JPEG base64 string
@@ -354,6 +490,120 @@ function captureFrame() {
     
     return base64Data;
 }
+
+// --- NEW HELPER FOR HIGH-RESOLUTION CAPTURE ---
+function createHighResolutionCanvasFrame(videoElement) {
+    // Use video.videoWidth and video.videoHeight for native resolution
+    const videoWidth = videoElement.videoWidth;
+    const videoHeight = videoElement.videoHeight;
+    
+    if (videoWidth === 0 || videoHeight === 0) {
+        console.warn("Video dimensions are zero, unable to create high-res frame.");
+        return null;
+    }
+
+    const highResCanvas = document.createElement('canvas');
+    highResCanvas.width = videoWidth;
+    highResCanvas.height = videoHeight;
+    const ctx = highResCanvas.getContext('2d');
+    
+    // Draw the current video frame onto the canvas at native resolution
+    ctx.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
+    
+    return highResCanvas;
+}
+
+function drawBoundingBox(box, score) {
+    const canvas = document.getElementById('boundingBoxCanvas');
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('cameraFeed');
+    if (!canvas || !ctx || !video) return;
+
+    // Match canvas size to visible video
+    const rect = video.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Clear previous drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Unpack normalized detection box: [ymin, xmin, ymax, xmax]
+    let [ymin, xmin, ymax, xmax] = box;
+
+    // --- TRANSFORM CORRECTIONS (for rotated video streams) ---
+    // Flip both horizontally and vertically
+    const flipped_ymin = 1 - ymax;
+    const flipped_ymax = 1 - box[0];
+    const flipped_xmin = 1 - xmax;
+    const flipped_xmax = 1 - box[1];
+
+    // Compute coordinates in display pixels
+    const x = flipped_xmin * canvas.width;
+    const y = flipped_ymin * canvas.height;
+    const width = (flipped_xmax - flipped_xmin) * canvas.width;
+    const height = (flipped_ymax - flipped_ymin) * canvas.height;
+
+    // Draw bounding box
+    ctx.save();
+    // ✅ FIX 1: Change line color to white
+    ctx.strokeStyle = 'white'; 
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, width, height);
+
+    // ✅ FIX 2: Draw Label Above the Box (Black Text with White Background)
+    const labelText = `Optic Disc (${(score * 100).toFixed(1)}%)`;
+    ctx.font = '18px Roboto'; // Slightly larger font for better visibility
+    const textMetrics = ctx.measureText(labelText);
+    const textWidth = textMetrics.width;
+    const textHeight = 22; // Approximate height for the background box
+
+    // Calculate background box position (just above the bounding box)
+    const labelX = x;
+    // Position text box 5px above the bounding box top edge (y)
+    const labelY = y - textHeight - 5; 
+
+    // Draw background box (white)
+    ctx.fillStyle = 'white';
+    // Add 10px padding around the text
+    ctx.fillRect(labelX, labelY, textWidth + 10, textHeight); 
+
+    // Draw text (black)
+    ctx.fillStyle = 'black';
+    // Position text inside the white padding box
+    ctx.fillText(labelText, labelX + 5, labelY + textHeight - 5); 
+    
+    ctx.restore();
+}
+
+
+function cropFrameByBox(sourceCanvas, box) {
+    // box = [ymin, xmin, ymax, xmax] (normalized 0–1, potentially padded)
+    const [ymin, xmin, ymax, xmax] = box;
+    const srcWidth = sourceCanvas.width;
+    const srcHeight = sourceCanvas.height;
+
+    // Calculate pixel coordinates from normalized box and source canvas dimensions
+    const x = xmin * srcWidth;
+    const y = ymin * srcHeight;
+    const width = (xmax - xmin) * srcWidth;
+    const height = (ymax - ymin) * srcHeight;
+
+    // Create a new canvas for the cropped area
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = width;
+    cropCanvas.height = height;
+    const cropCtx = cropCanvas.getContext('2d');
+
+    // Copy the region from the source
+    cropCtx.drawImage(
+        sourceCanvas,
+        x, y, width, height, // source region
+        0, 0, width, height  // destination
+    );
+
+    return cropCanvas.toDataURL('image/jpeg', 0.9);
+}
+
 
 function manualImageCapture() {
     // Determine the new image name
@@ -417,43 +667,151 @@ function mockImageCapture() {
     updateCaptureStatus();
 }
 
-function startAutoCapture() {
-    if (autoCaptureInterval) clearInterval(autoCaptureInterval);
-    autoCaptureInterval = setInterval(() => {
-        if (currentPage === 2 && isOdDetectionOn) {
-            mockImageCapture();
+
+
+async function detectObjects() {
+    // The loop is now controlled by the visibility toggle, not the capture button
+    if (!isOdDetectionVisible || !objectDetectionModel) {
+        // Keep the loop idle until the toggle is on
+        if (isOdDetectionVisible) {
+            window.requestAnimationFrame(detectObjects);
         }
-    }, 400); 
-}
-function stopAutoCapture() {
-    if (autoCaptureInterval) {
-        clearInterval(autoCaptureInterval);
-        autoCaptureInterval = null;
+        return;
+    }
+
+    const video = document.getElementById('cameraFeed');
+    if (!video || video.readyState < 2) {
+        window.requestAnimationFrame(detectObjects);
+        return;
+    }
+
+    // Canvas for model input (low resolution for speed)
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    tf.engine().startScope();
+    try {
+        const img = tf.browser.fromPixels(canvas);
+        const resized = tf.image.resizeBilinear(img, [640, 480]);
+        const casted = resized.cast('int32');
+        const expanded = casted.expandDims(0);
+        const predictions = await objectDetectionModel.executeAsync(expanded);
+
+        const scores = (await predictions[3].array())[0][0];
+        const boxes = (await predictions[1].array())[0][0];
+
+        if (scores > detectionThreshold) {
+            drawBoundingBox(boxes, scores); // Draws the visualization
+
+            const currentTime = Date.now();
+            // Only save an image if auto-capture is explicitly activated
+            if (isAutoCaptureActive && (currentTime - lastActionTime > detectionDelay)) {
+                lastActionTime = currentTime;
+                console.log('Auto-capturing object with score:', scores);
+
+                // --- START PADDING LOGIC (10% DILATION) ---
+                let [ymin, xmin, ymax, xmax] = boxes;
+                const paddingRatio = 0.10; // 10% total padding
+                
+                // Calculate padding based on the box dimensions
+                const yRange = ymax - ymin;
+                const xRange = xmax - xmin;
+                
+                // For a 10% total padding (5% on each side)
+                const yPadding = (yRange * paddingRatio) / 2;
+                const xPadding = (xRange * paddingRatio) / 2;
+                
+                // Apply padding and ensure coordinates remain within [0, 1]
+                const padded_ymin = Math.max(0, ymin - yPadding);
+                const padded_ymax = Math.min(1, ymax + yPadding);
+                const padded_xmin = Math.max(0, xmin - xPadding);
+                const padded_xmax = Math.min(1, xmax + xPadding);
+                
+                const paddedBox = [padded_ymin, padded_xmin, padded_ymax, padded_xmax];
+                // --- END PADDING LOGIC ---
+
+                const video = document.getElementById('cameraFeed');
+                // Create a canvas with the full, native video resolution
+                const highResCanvas = createHighResolutionCanvasFrame(video);
+                
+                if (!highResCanvas) {
+                    tf.engine().endScope(); 
+                    window.requestAnimationFrame(detectObjects);
+                    return;
+                }
+
+                // Use the paddedBox for cropping the high-resolution image
+                const croppedBase64 = cropFrameByBox(highResCanvas, paddedBox); 
+
+                const type = 'AUTO';
+                let count;
+                if (currentEye === 'LEFT') {
+                    autoLeftCount++;
+                    count = autoLeftCount;
+                } else {
+                    autoRightCount++;
+                    count = autoRightCount;
+                }
+                const name = `${currentEye.charAt(0)}A${count}`;
+
+                const newImage = {
+                    id: Date.now(),
+                    base64: croppedBase64,
+                    eye: currentEye,
+                    selected: false,
+                    name,
+                    type
+                };
+                capturedImages.push(newImage);
+                renderCarousel();
+                updateCaptureStatus();
+            }
+        } else {
+            const boxCanvas = document.getElementById('boundingBoxCanvas');
+            const ctx = boxCanvas.getContext('2d');
+            ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
+        }
+
+    } catch (e) {
+        console.warn('Object detection error:', e);
+    }
+    tf.engine().endScope();
+
+    // Keep the loop going as long as the toggle is on
+    if (isOdDetectionVisible) {
+        window.requestAnimationFrame(detectObjects);
     }
 }
+
 function toggleOdCapture() {
-    const odToggleBtn = document.getElementById('autoCaptureToggleBtn');
-    // REMOVED: Status span update
-    
-    isOdDetectionOn = !isOdDetectionOn;
-    if (isOdDetectionOn) {
-        odToggleBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
-        odToggleBtn.classList.add('active');
-        // REMOVED: odStatusSpan update
-        startAutoCapture();
+    const odToggle = document.getElementById('odDetectionToggle');
+    // Prevent activation if the main OD toggle is off
+    if (!odToggle?.checked) {
+        alertUser('Turn ON OD Detection before enabling auto capture.', true);
+        return;
+    }
+
+    isAutoCaptureActive = !isAutoCaptureActive; // Toggle the saving state
+
+    const autoBtn = document.getElementById('autoCaptureToggleBtn');
+    if (isAutoCaptureActive) {
+        autoBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
+        autoBtn.classList.add('active');
     } else {
-        odToggleBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
-        odToggleBtn.classList.remove('active');
-        // REMOVED: odStatusSpan update
-        stopAutoCapture();
+        autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+        autoBtn.classList.remove('active');
     }
 }
+
 function updateCaptureStatus() {
     const leftCount = capturedImages.filter(img => img.eye === 'LEFT').length;
     const rightCount = capturedImages.filter(img => img.eye === 'RIGHT').length;
     
-    // MODIFICATION 1: Update the overlay element with full words
-    const imageCounterOverlay = document.getElementById('imageCountOverlay');
+    // FIX: Changed 'imageCountOverlay' to 'imageCounter' to match the HTML ID.
+    const imageCounterOverlay = document.getElementById('imageCounter');
     if (imageCounterOverlay) {
         imageCounterOverlay.textContent = `LEFT: ${leftCount} | RIGHT: ${rightCount}`;
     }
@@ -625,8 +983,8 @@ function clearAllImages() {
 // --- Lightbox Functionality (UNCHANGED) ---
 
 function openLightbox(imageId, imageSet) {
-    lightboxImageSet = imageSet;
-    lightboxCurrentIndex = lightboxImageSet.findIndex(img => img.id === imageId);
+    lightboxImageSetet = imageSet;
+    lightboxCurrentIndex = lightboxImageSetet.findIndex(img => img.id === imageId);
     
     if (lightboxCurrentIndex === -1) return;
 
@@ -643,25 +1001,112 @@ function closeLightbox() {
 }
 
 function updateLightboxImage() {
-    const img = lightboxImageSet[lightboxCurrentIndex];
-    document.getElementById('lightbox-image').src = img.base64;
-    
-    // MODIFIED: Update info display to include image name
-    document.getElementById('lightbox-info').textContent = `EYE: ${img.eye} (${img.name})`;
-    
-    // Update select button appearance
+    // Defensive checks: ensure we have an image set and an index
+    if (!Array.isArray(lightboxImageSetet) || lightboxImageSetet.length === 0) {
+        console.warn('Lightbox: no images to show.');
+        // Hide image if possible and show a placeholder text
+        const lightboxImgElEmpty = document.getElementById('lightbox-image');
+        const infoElEmpty = document.getElementById('lightbox-info');
+        if (lightboxImgElEmpty) {
+            lightboxImgElEmpty.src = '';
+            lightboxImgElEmpty.alt = 'No image available';
+        }
+        if (infoElEmpty) infoElEmpty.textContent = 'Enlarged view';
+        // Disable nav buttons if present
+        const prevBtnEmpty = document.getElementById('lightbox-prev');
+        const nextBtnEmpty = document.getElementById('lightbox-next');
+        if (prevBtnEmpty) prevBtnEmpty.disabled = true;
+        if (nextBtnEmpty) nextBtnEmpty.disabled = true;
+        return;
+    }
+
+    // Clamp index within bounds
+    if (typeof lightboxCurrentIndex !== 'number' || lightboxCurrentIndex < 0) lightboxCurrentIndex = 0;
+    if (lightboxCurrentIndex >= lightboxImageSetet.length) lightboxCurrentIndex = lightboxImageSetet.length - 1;
+
+    const img = lightboxImageSetet[lightboxCurrentIndex];
+    if (!img) {
+        console.warn('Lightbox: invalid image at current index.');
+        return;
+    }
+
+    // Elements
+    const lightboxImgEl = document.getElementById('lightbox-image');
+    const infoEl = document.getElementById('lightbox-info');
+    const prevBtn = document.getElementById('lightbox-prev');
+    const nextBtn = document.getElementById('lightbox-next');
     const selectBtn = document.getElementById('lightboxSelectBtn');
-    selectBtn.textContent = img.selected ? 'Deselect' : 'Select';
-    selectBtn.classList.toggle('active', img.selected);
+    const deleteBtn = document.getElementById('lightboxDeleteBtn');
+
+    // Update main image element
+    if (lightboxImgEl) {
+        if (img.base64) {
+            lightboxImgEl.src = img.base64;
+            lightboxImgEl.alt = img.name ? `${img.eye || ''} - ${img.name}` : 'Captured Image';
+        } else {
+            lightboxImgEl.src = '';
+            lightboxImgEl.alt = 'No image available';
+        }
+    }
+
+    // Build info HTML: name on top, OD / classification score below (as requested)
+    if (infoEl) {
+        const nameText = img.name ? String(img.name) : '';
+        // Prefer classifier probability -> img.classification.probability, then img.score, then img.odScore
+        let scorePct = null;
+        if (img.classification && typeof img.classification.probability === 'number' && !isNaN(img.classification.probability)) {
+            scorePct = img.classification.probability;
+        } else if (typeof img.score === 'number' && !isNaN(img.score)) {
+            scorePct = img.score;
+        } else if (typeof img.odScore === 'number' && !isNaN(img.odScore)) {
+            scorePct = img.odScore;
+        }
+
+        // Also show a textual label if available (classification class / resultLabel / classification.result)
+        const label = img.resultLabel || (img.classification && img.classification.class) || (img.classification && img.classification.result) || '';
+
+        // Compose HTML — name first (top), score/label second (below)
+        let html = `<div class="lightbox-name" style="font-weight:700;margin-bottom:6px;">${nameText || 'Unnamed image'}</div>`;
+
+        if (label && scorePct !== null) {
+            // e.g. "ODE 87.3%"
+            const pct = (Number(scorePct) * 100).toFixed(1);
+            html += `<div class="lightbox-od-score">${label} ${pct}%</div>`;
+        } else if (label) {
+            html += `<div class="lightbox-od-score">${label}</div>`;
+        } else if (scorePct !== null) {
+            const pct = (Number(scorePct) * 100).toFixed(1);
+            html += `<div class="lightbox-od-score">Score: ${pct}%</div>`;
+        } else {
+            html += `<div class="lightbox-od-score">No score available</div>`;
+        }
+
+        infoEl.innerHTML = html;
+    }
+
+    // Update select/deselect button if present
+    if (selectBtn) {
+        selectBtn.textContent = img.selected ? 'Deselect' : 'Select';
+        selectBtn.classList.toggle('active', !!img.selected);
+    }
+
+    // Update delete button enabled state if present
+    if (deleteBtn) {
+        deleteBtn.disabled = false; // allow deletion by default; caller can change if needed
+    }
+
+    // Update navigation buttons (disable at bounds)
+    if (prevBtn) prevBtn.disabled = (lightboxCurrentIndex === 0);
+    if (nextBtn) nextBtn.disabled = (lightboxCurrentIndex === lightboxImageSetet.length - 1);
 }
 
 function showNextImage() {
-    lightboxCurrentIndex = (lightboxCurrentIndex + 1) % lightboxImageSet.length;
+    lightboxCurrentIndex = (lightboxCurrentIndex + 1) % lightboxImageSetet.length;
     updateLightboxImage();
 }
 
 function showPrevImage() {
-    lightboxCurrentIndex = (lightboxCurrentIndex - 1 + lightboxImageSet.length) % lightboxImageSet.length;
+    lightboxCurrentIndex = (lightboxCurrentIndex - 1 + lightboxImageSetet.length) % lightboxImageSetet.length;
     updateLightboxImage();
 }
 
@@ -670,7 +1115,7 @@ function selectImageFromLightbox() {
     if (!isSelectionMode) {
         isSelectionMode = true; // Automatically enter selection mode
     }
-    const currentImg = lightboxImageSet[lightboxCurrentIndex];
+    const currentImg = lightboxImageSetet[lightboxCurrentIndex];
     currentImg.selected = !currentImg.selected;
     updateLightboxImage(); // Update button text
     updateDeleteButtonCount(); // Update main page button count
@@ -678,7 +1123,7 @@ function selectImageFromLightbox() {
 
 function deleteImageFromLightbox() {
     // Get the ID of the image currently being viewed
-    const currentImgId = lightboxImageSet[lightboxCurrentIndex].id; 
+    const currentImgId = lightboxImageSetet[lightboxCurrentIndex].id; 
     
     if (customConfirm(`Are you sure you want to delete this image?`)) {
         // Remove from the main capturedImages array
@@ -690,8 +1135,8 @@ function deleteImageFromLightbox() {
         
         // MODIFICATION 2: Update the lightbox image set and index
         
-        // Find the full set of images for the current eye to rebuild lightboxImageSet
-        const eye = lightboxImageSet[lightboxCurrentIndex].eye;
+        // Find the full set of images for the current eye to rebuild lightboxImageSetet
+        const eye = lightboxImageSetet[lightboxCurrentIndex].eye;
         const newImageSet = capturedImages.filter(img => img.eye === eye);
         
         if (newImageSet.length === 0) {
@@ -702,11 +1147,11 @@ function deleteImageFromLightbox() {
             return;
         }
 
-        lightboxImageSet = newImageSet;
+        lightboxImageSetet = newImageSet;
         
         // Adjust the index: if we were at the end, jump to the new last image (which is now index - 1). Otherwise, stay at the current index (which is now the next image).
         // Since we removed the image, the list shrinks, and the next image takes its place.
-        if (lightboxCurrentIndex >= lightboxImageSet.length) {
+        if (lightboxCurrentIndex >= lightboxImageSetet.length) {
             lightboxCurrentIndex = 0; // If deleting the last image, wrap to the beginning (or new last)
         }
         
@@ -714,86 +1159,291 @@ function deleteImageFromLightbox() {
     }
 }
 
-
-// --- Page 4: Analysis Logic (MODIFIED to store results) ---
+// --- Page 4: Analysis Logic (UPDATED to use real classification) ---
 
 function renderAnalysisPage() {
-    const leftImages = capturedImages.filter(img => img.eye === 'LEFT');
-    const rightImages = capturedImages.filter(img => img.eye === 'RIGHT');
-
-    const getRandomSubset = (arr, count) => {
-        const shuffled = [...arr].sort(() => 0.5 - Math.random());
-        return shuffled.slice(0, count);
-    };
-
-    const leftSubset = getRandomSubset(leftImages, 5);
-    const rightSubset = getRandomSubset(rightImages, 5);
-
     const gridLeft = document.getElementById('analysis-grid-left');
     const gridRight = document.getElementById('analysis-grid-right');
-    gridLeft.innerHTML = '';
-    gridRight.innerHTML = '';
-
-    leftSubset.forEach(img => {
-        const imageEl = document.createElement('img');
-        imageEl.src = img.base64;
-        gridLeft.appendChild(imageEl);
-    });
-    
-    rightSubset.forEach(img => {
-        const imageEl = document.createElement('img');
-        imageEl.src = img.base64;
-        gridRight.appendChild(imageEl);
-    });
-
-    const appendImageWithLabel = (grid, img) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'analysis-image-wrapper'; // Need a wrapper for label positioning
-        
-        const imageEl = document.createElement('img');
-        imageEl.src = img.base64;
-        imageEl.alt = `${img.eye} Image ${img.name}`;
-        
-        // NEW: Image label element
-        const label = document.createElement('div');
-        label.className = 'image-label-thumbnail';
-        label.textContent = img.name;
-        
-        wrapper.appendChild(imageEl);
-        wrapper.appendChild(label);
-        grid.appendChild(wrapper);
-    };
-
-    gridLeft.innerHTML = '';
-    gridRight.innerHTML = '';
-
-    leftSubset.forEach(img => appendImageWithLabel(gridLeft, img));
-    rightSubset.forEach(img => appendImageWithLabel(gridRight, img));
-    
-    // Show current stored results (if run previously), otherwise hide
-    document.getElementById('analysis-result-left').textContent = analysisResults.left;
-    document.getElementById('analysis-result-right').textContent = analysisResults.right;
-    
-    document.getElementById('analysis-result-left').style.display = (analysisResults.left !== 'Not yet run.' ? 'block' : 'none');
-    document.getElementById('analysis-result-right').style.display = (analysisResults.right !== 'Not yet run.' ? 'block' : 'none');
-}
-
-function runAnalysis() {
     const resultLeft = document.getElementById('analysis-result-left');
     const resultRight = document.getElementById('analysis-result-right');
     
-    // MODIFICATION: Store and display mock results
-    analysisResults.left = 'LEFT EYE RESULT: NO ODE DETECTED.';
-    analysisResults.right = 'RIGHT EYE RESULT: SUSPECTED ODE. FURTHER REVIEW RECOMMENDED.';
+    // Clear previous content
+    gridLeft.innerHTML = '';
+    gridRight.innerHTML = '';
+
+    const allLeftImages = capturedImages.filter(img => img.eye === 'LEFT');
+    const allRightImages = capturedImages.filter(img => img.eye === 'RIGHT');
+
+    // FIX: Only render the top 5 images used for analysis
+    const imagesToRenderLeft = findTopKValues(allLeftImages, TOP_K_IMAGES);
+    const imagesToRenderRight = findTopKValues(allRightImages, TOP_K_IMAGES);
+
+    /**
+     * Creates a styled image wrapper with the classification score label.
+     */
+    const createAnalysisImageWrapper = (img) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'analysis-image-wrapper top-k-image';
+
+        const imageEl = document.createElement('img');
+        imageEl.src = img.base64;
+        imageEl.alt = `${img.eye} Image ${img.name}`;
+
+        // Score label (top)
+        const scoreLabel = document.createElement('div');
+        scoreLabel.className = 'analysis-score-label';
+
+        // Name label (bottom)
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'analysis-name-label';
+        nameLabel.textContent = img.name || '';
+
+        const classification = img.classification;
+        if (classification && classification.class && classification.class !== 'error') {
+            // Use stored probability (should now exist after the runAnalysis fix)
+            const pct = (typeof classification.probability === 'number')
+                ? `${(classification.probability * 100).toFixed(0)}%`
+                : '?%';
+            scoreLabel.textContent = `${classification.class} ${pct}`;
+            scoreLabel.classList.add(`score-${classification.class.toLowerCase().replace('_', '-')}`);
+        } else {
+            // Fall back to odScore (if present) or show placeholder
+            const displayScore = (typeof img.odScore === 'number' && img.odScore > 0)
+                ? `OD: ${(img.odScore * 100).toFixed(1)}%`
+                : '—';
+            scoreLabel.textContent = displayScore;
+            scoreLabel.classList.add('score-unanalyzed');
+        }
+
+        wrapper.appendChild(imageEl);
+        wrapper.appendChild(scoreLabel); // top
+        wrapper.appendChild(nameLabel);  // bottom
+        return wrapper;
+    };
     
-    resultLeft.textContent = analysisResults.left;
-    resultRight.textContent = analysisResults.right;
+    // Render ONLY the calculated top 5 images
+    imagesToRenderLeft.forEach(img => gridLeft.appendChild(createAnalysisImageWrapper(img)));
+    imagesToRenderRight.forEach(img => gridRight.appendChild(createAnalysisImageWrapper(img)));
     
-    resultLeft.style.display = 'block';
-    resultRight.style.display = 'block';
+    // Update the main result summaries and apply visual styling
+    const updateResultDisplay = (el, resultText, resultClass) => {
+        el.textContent = resultText;
+        el.classList.remove('result-success', 'result-warning');
+        
+        // Error fix: Only apply class if a valid class string is present
+        if (resultClass) {
+            el.classList.add(resultClass);
+        }
+    };
     
-    alertUser("Analysis simulated.");
+    // Use the class stored in analysisResults to apply the correct theme
+    updateResultDisplay(resultLeft, analysisResults.left, analysisResults.leftClass);
+    updateResultDisplay(resultRight, analysisResults.right, analysisResults.rightClass);
 }
+
+/**
+ * Selects the top K elements (images) with the highest OD score (stored in the 'odScore' property).
+ * @param {Array<Object>} elements - Array of captured image objects.
+ * @param {number} k - The number of top elements to return.
+ * @returns {Array<Object>} - The top K elements.
+ */
+/**
+ * Selects the top K elements (images) with the highest OD score (stored in the 'odScore' property).
+ */
+function findTopKValues(elements, k) {
+    if (elements.length === 0) return [];
+
+    // Sort by odScore in descending order (highest score first)
+    const sorted = [...elements].sort((a, b) => (b.odScore || 0) - (a.odScore || 0));
+
+    // Return the top K elements
+    return sorted.slice(0, k);
+}
+
+
+async function runAnalysis() {
+    const analysisBtn = document.getElementById('runAnalysisBtn');
+    analysisBtn.disabled = true;
+    analysisBtn.textContent = 'Analyzing Top 5...';
+
+    if (!classifierModel || !pretrainedClassifierModel) {
+        alertUser("Classification models are still loading or failed to load. Please wait.", true);
+        analysisBtn.disabled = false;
+        analysisBtn.textContent = 'Run Analysis';
+        return;
+    }
+
+    const allLeftImages = capturedImages.filter(img => img.eye === 'LEFT');
+    const allRightImages = capturedImages.filter(img => img.eye === 'RIGHT');
+
+    const imagesToClassifyLeft = findTopKValues(allLeftImages, TOP_K_IMAGES);
+    const imagesToClassifyRight = findTopKValues(allRightImages, TOP_K_IMAGES);
+
+    /**
+     * Runs classification for the top K images of one eye and determines a majority class.
+     */
+    const analyzeEye = async (images, eyeName = 'Unknown') => {
+        if (images.length === 0)
+            return { text: 'NO IMAGES CAPTURED.', class: 'result-warning' };
+
+        console.log(`▶ Analyzing ${images.length} ${eyeName} images...`);
+        const predictions = [];
+
+        for (const img of images) {
+            const imageElement = await getImageDataFromBase64(img.base64);
+            if (!imageElement) {
+                console.warn('Skipping image: could not decode base64');
+                continue;
+            }
+
+            // --- Run model prediction ---
+            const prediction = await predict(imageElement, classifierModel);
+            if (!prediction || !prediction.class) {
+                console.warn('Prediction failed or empty for one image.');
+                continue;
+            }
+
+            predictions.push(prediction);
+
+            // Store per-image classification results
+            img.classification = {
+                result: `${prediction.class} (${(prediction.probability * 100).toFixed(0)}%)`,
+                class: prediction.class,
+                probability: prediction.probability,
+                rawScore: prediction.rawScore ?? prediction.probability,
+                isTopK: true
+            };
+            img.score = prediction.probability;
+            img.resultLabel = prediction.class;
+        } // <-- this brace was missing before!
+
+        // --- STEP 2: Determine Final Result and Text ---
+        const majorityClass = getMajorityClass(predictions);
+        let resultText = '';
+        let resultClass = 'result-warning'; // Default amber
+        const totalVotes = predictions.filter(p => p.class !== 'error').length;
+        const odeVotes = predictions.filter(p => p.class === 'ODE').length;
+
+        if (majorityClass.class === 'N/A') {
+            resultText = 'Analysis failed: No valid images found.';
+        } else if (majorityClass.class === 'not_ODE') {
+            const notOdeVotes = totalVotes - odeVotes;
+            resultText = `No Optic Disc Edema detected. Vote ratio: ${notOdeVotes}/${totalVotes}`;
+            resultClass = 'result-success';
+        } else if (majorityClass.class === 'ODE') {
+            resultText = `Optic Disc Edema suspected. Further review recommended. Vote ratio: ${odeVotes}/${totalVotes}`;
+        } else if (majorityClass.class === 'INCONCLUSIVE') {
+            resultText = `Non-conclusive result. Please repeat image capture. Vote ratio: ${odeVotes}/${totalVotes}`;
+        }
+
+        console.log(`✔ ${eyeName} analysis complete → ${majorityClass.class} (${odeVotes}/${totalVotes})`);
+        return { text: resultText, class: resultClass };
+    };
+
+    alertUser("Starting classification of top 5 images...");
+
+    // Run analysis for both eyes in parallel
+    const [leftResult, rightResult] = await Promise.all([
+        analyzeEye(imagesToClassifyLeft, 'LEFT'),
+        analyzeEye(imagesToClassifyRight, 'RIGHT')
+    ]);
+
+    // Store and display results
+    analysisResults.left = leftResult.text;
+    analysisResults.right = rightResult.text;
+    analysisResults.leftClass = leftResult.class;
+    analysisResults.rightClass = rightResult.class;
+
+    renderAnalysisPage();
+
+    analysisBtn.disabled = false;
+    analysisBtn.textContent = 'Run Analysis';
+    alertUser("Analysis complete.");
+}
+
+
+// NEW HELPER: Get the image data required by TF from the Base64 string
+// Returns a Promise that resolves to an HTMLCanvasElement suitable for tf.browser.fromPixels
+function getImageDataFromBase64(base64) {
+    const img = new Image();
+    img.src = base64;
+    
+    return new Promise((resolve) => {
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            // Use the full resolution of the captured image
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            resolve(canvas);
+        };
+        img.onerror = () => resolve(null); // Resolve to null on error
+    });
+}
+
+// preprocess the image for the classification, classify the image and uses the threshold set to obtain the result
+// (Based on original logic for single sigmoid output)
+async function predict(imageElement, model) {
+    if (!imageElement) return { class: 'not_ODE', probability: 0, rawScore: 0 };
+    
+    tf.engine().startScope();
+    try {
+        const tensor = tf.browser.fromPixels(imageElement);
+        const normalizedTensor = tensor.div(tf.scalar(255));
+        // Resize to 224x224 (MobileNet/Classifier standard input size)
+        const resized = tf.image.resizeBilinear(normalizedTensor, [224, 224]);
+        const expanded = resized.expandDims(0);
+        
+        const prediction = await model.predict(expanded).data();
+        
+        tf.dispose([tensor, normalizedTensor, resized, expanded]);
+        
+        // Assuming single sigmoid output where value > threshold is 'not_ODE'
+        const nonODEProbability = parseFloat(prediction[0]);
+        
+        if (nonODEProbability > CLASSIFICATION_THRESHOLD) {
+            return { class: 'not_ODE', probability: nonODEProbability, rawScore: nonODEProbability };
+        } else {
+            // The probability is inverted for the 'ODE' class
+            return { class: 'ODE', probability: 1 - nonODEProbability, rawScore: nonODEProbability };
+        }
+    } catch (e) {
+        console.error("Prediction error:", e);
+        tf.engine().endScope();
+        return { class: 'error', probability: 0, rawScore: 0 };
+    } finally {
+        tf.engine().endScope();
+    }
+}
+
+// Takes the majority class based on vote count.
+function getMajorityClass(predictions) {
+    const counts = { 'ODE': 0, 'not_ODE': 0 };
+    
+    // Filter out images that failed to load or classify
+    const validPredictions = predictions.filter(p => p.class !== 'error');
+    if (validPredictions.length === 0) return { class: 'N/A', probability: 0, count: 0 };
+
+    for (const prediction of validPredictions) {
+        counts[prediction.class] += 1;
+    }
+    
+    const ODECount = counts['ODE'];
+    const notODECount = counts['not_ODE'];
+    const total = ODECount + notODECount;
+
+    // Determine majority class and probability (ratio of votes)
+    if (ODECount === notODECount) {
+        return { class: 'INCONCLUSIVE', probability: 0.5, count: total };
+    } else if (ODECount > notODECount) {
+        return { class: 'ODE', probability: ODECount / total, count: total };
+    } else {
+        return { class: 'not_ODE', probability: notODECount / total, count: total };
+    }
+}
+
 
 
 // --- Page 5: Questionnaire Logic (MODIFIED to capture answers) ---
@@ -877,32 +1527,50 @@ function renderOverviewPage() {
     renderOverviewCarousel('overview-carousel-left', leftImages);
     renderOverviewCarousel('overview-carousel-right', rightImages);
 
-    // 3. Analysis Results
-    document.getElementById('overview-analysis-left').textContent = analysisResults.left;
-    document.getElementById('overview-analysis-right').textContent = analysisResults.right;
+    // 3. Analysis Results (MODIFIED for thematic styling)
+    const resultLeftEl = document.getElementById('overview-analysis-left');
+    const resultRightEl = document.getElementById('overview-analysis-right');
+
+    resultLeftEl.textContent = analysisResults.left;
+    resultRightEl.textContent = analysisResults.right;
+    
+    // NEW LOGIC: Apply thematic classes for consistent styling
+    resultLeftEl.classList.remove('result-success', 'result-warning');
+    if (analysisResults.leftClass) {
+        resultLeftEl.classList.add(analysisResults.leftClass);
+    }
+    
+    resultRightEl.classList.remove('result-success', 'result-warning');
+    if (analysisResults.rightClass) {
+        resultRightEl.classList.add(analysisResults.rightClass);
+    }
 
     // 4. TLX Review and Comments
     const tlxContainer = document.getElementById('overview-tlx-results');
     tlxContainer.innerHTML = '';
     
+    // Note: Assuming 'tlxAnswers' is a globally defined object
     if (Object.keys(tlxAnswers).length === 0) {
             // Should not happen if navigation is correct, but re-capture if necessary
-            captureTLXAnswers(); 
+            // captureTLXAnswers(); // Uncomment if you want to force capture here
+             tlxContainer.innerHTML = '<p style="margin: auto; font-size: 0.9em; color: #666;">NASA TLX answers not found.</p>';
+    } else {
+        // Note: Assuming 'TLX_DIMENSIONS' is a globally defined array
+        TLX_DIMENSIONS.forEach((dim, index) => {
+            const key = `q${index + 1}_${dim.name.replace(/\s/g, '')}`;
+            // Checkmark if the answer is present in tlxAnswers
+            const isAnswered = tlxAnswers.hasOwnProperty(key); 
+            
+            const item = document.createElement('div');
+            item.className = 'overview-tlx-item';
+            item.innerHTML = `
+                <span class="tlx-question-text">${dim.prompt}</span>
+                <span class="tlx-status-check">${isAnswered ? '&#x2713;' : ''}</span>
+            `;
+            tlxContainer.appendChild(item);
+        });
     }
 
-    TLX_DIMENSIONS.forEach((dim, index) => {
-        const key = `q${index + 1}_${dim.name.replace(/\s/g, '')}`;
-        // Checkmark if the answer is present in tlxAnswers
-        const isAnswered = tlxAnswers.hasOwnProperty(key); 
-        
-        const item = document.createElement('div');
-        item.className = 'overview-tlx-item';
-        item.innerHTML = `
-            <span class="tlx-question-text">${dim.prompt}</span>
-            <span class="tlx-status-check">${isAnswered ? '&#x2713;' : ''}</span>
-        `;
-        tlxContainer.appendChild(item);
-    });
 
     document.getElementById('overviewComments').textContent = subjectInfo.notes || 'No comments provided.';
 }
@@ -998,6 +1666,46 @@ function setupEventListeners() {
     document.getElementById('backFromCaptureBtn')?.addEventListener('click', () => navigateTo(1)); 
     document.getElementById('toReviewBtnBottom')?.addEventListener('click', () => navigateTo(3));
 
+    // --- OD Detection Toggle (NEW) ---
+    const odToggle = document.getElementById('odDetectionToggle');
+    const autoBtn = document.getElementById('autoCaptureToggleBtn');
+
+    if (odToggle && autoBtn) {
+        odToggle.addEventListener('change', () => {
+            isOdDetectionVisible = odToggle.checked;
+            const boxCanvas = document.getElementById('boundingBoxCanvas');
+            const ctx = boxCanvas?.getContext('2d');
+
+            if (isOdDetectionVisible) {
+                console.log("Optic Disc detection overlay enabled.");
+                // Start the detection loop for visualization
+                window.requestAnimationFrame(detectObjects);
+
+                // Style the button to show it's ready
+                autoBtn.classList.remove('secondary-btn');
+                autoBtn.classList.add('primary-btn');
+                autoBtn.style.backgroundColor = '#28a745'; // Inactive green
+                autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+            } else {
+                console.log("Optic Disc detection overlay disabled.");
+
+                // Also deactivate saving if it was on
+                isAutoCaptureActive = false;
+
+                // Clear the bounding box overlay
+                if (ctx) {
+                    ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
+                }
+
+                // Reset the button to its default off-state
+                autoBtn.classList.remove('primary-btn', 'active');
+                autoBtn.classList.add('secondary-btn');
+                autoBtn.style.backgroundColor = '';
+                autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+            }
+        });
+    }
+
     // Camera Options (NEW, Step 2)
     document.getElementById('optionsBtn')?.addEventListener('click', () => toggleOptionsPanel(true));
     document.getElementById('closeOptionsBtn')?.addEventListener('click', () => toggleOptionsPanel(false));
@@ -1012,8 +1720,12 @@ function setupEventListeners() {
 
     // Analysis Page (Step 4)
     document.getElementById('runAnalysisBtn')?.addEventListener('click', runAnalysis);
-    document.getElementById('backFromAnalysisBtn')?.addEventListener('click', () => navigateTo(3));
-    document.getElementById('toQuestionnaireBtn')?.addEventListener('click', () => navigateTo(5));
+    document.getElementById('backToReviewBtn')?.addEventListener('click', () => {
+        navigateTo(3); // Navigate to Review (Page 3)
+    });
+   document.getElementById('toTlxBtn')?.addEventListener('click', () => {
+        navigateTo(5); // Navigate to TLX (Page 5)
+    });
 
     // Questionnaire Page (Step 5)
     document.getElementById('backFromQuestionnaireBtn')?.addEventListener('click', () => navigateTo(4));
@@ -1062,38 +1774,13 @@ function setupEventListeners() {
 
 // --- Initialization ---
 window.addEventListener('load', () => {
-    initFirebase();
-    setupEventListeners();
+// 1. Get the new status DOM elements
+    getInfoPageStatusElements();
+    
+    // 2. Start model loading immediately
+    loadModels();
+    
+    // 3. Keep existing setup logic
+    setupEventListeners(); 
     updateStepNav();
 });
-
-async function initFirebase() {
-    try {
-        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        if (Object.keys(firebaseConfig).length === 0) {
-            console.error("Firebase configuration is missing.");
-            return;
-        }
-        const firebaseApp = initializeApp(firebaseConfig);
-        window.db = getFirestore(firebaseApp);
-        window.auth = getAuth(firebaseApp);
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        if (initialAuthToken) {
-            await signInWithCustomToken(window.auth, initialAuthToken);
-        } else {
-            await signInAnonymously(window.auth);
-        }
-        onAuthStateChanged(window.auth, (user) => {
-            if (user) {
-                window.userId = user.uid;
-            } else {
-                window.userId = crypto.randomUUID();
-            }
-            window.isAuthReady = true;
-            console.log("Firebase Auth Ready. User ID:", window.userId);
-        });
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-    }
-}

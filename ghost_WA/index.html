@@ -42,6 +42,20 @@
         </div>
     </div>
     
+    <div id="model-status-info-page" class="model-status-info-page">
+        <p><strong>Model Loading Status:</strong></p>
+        
+        <div id="obj-det-status" class="model-status-item">
+            <i class="status-circle fas fa-circle-notch fa-spin orange" data-status-key="objectDetection"></i>
+            <span>Auto Capture Object Detection Model: <span class="status-text">Loading...</span></span>
+        </div>
+        
+        <div id="classifier-status" class="model-status-item">
+            <i class="status-circle fas fa-circle-notch fa-spin orange" data-status-key="classifier"></i>
+            <span>Optic Disc Edema Classification Model: <span class="status-text">Loading...</span></span>
+        </div>
+    </div>
+
     <label for="operatorId">Operator ID (Required):</label>
     <input type="text" id="operatorId" placeholder="Enter Operator ID"/>
     
@@ -56,6 +70,7 @@
 <section id="page-capture" class="page" data-page="2">
     <div class="camera-container">
      <video id="cameraFeed" autoplay playsinline></video>
+     <canvas id="boundingBoxCanvas"></canvas>
      
      <button id="optionsBtn" class="options-btn">CAMERA SETTINGS</button>
      
@@ -72,38 +87,40 @@
         <button id="closeOptionsBtn" class="primary-btn">Close</button>
     </div>
 
-     <div class="controls-row video-controls-overlay">
-        
-        <div class="controls-row-counter">
-            <div id="imageCountOverlay" class="image-count-overlay">LEFT: 0 | RIGHT: 0</div>
-        </div>
-        
-        <div class="controls-row-buttons">
-            <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button> 
-            
-            <div class="eye-toggle-container control-btn">
-              <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
-              <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
-            </div>
-            
-            <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
-        </div>
-     </div>
-    </div>
+        <div class="controls-row video-controls-overlay">
 
-    <div id="cameraOptionsPanel" class="camera-options-panel" style="display:none;">
-        <h3>Camera Settings</h3>
-        <div class="setting-item">
-            <label for="cameraSelector">Select Camera:</label>
-            <select id="cameraSelector"></select>
+                <div class="controls-row-top">
+                    <label for="odDetectionToggle" class="od-toggle-label">
+                        <input type="checkbox" id="odDetectionToggle" class="od-toggle-input" />
+                        <span class="od-toggle-slider"></span>
+                        <span class="od-toggle-text">OD DETECTION</span>
+                    </label>
+                    <div id="imageCounter" class="image-count-overlay">LEFT: 0 | RIGHT: 0</div>
+                </div>
+
+                <div class="controls-row-buttons">
+                    <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button>
+                    <div class="eye-toggle-container control-btn">
+                        <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
+                        <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
+                    </div>
+                    <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
+                </div>
         </div>
-        <div class="setting-item">
-            <label for="torchToggle">Flash/LED:</label>
-            <button id="torchToggleBtn" class="primary-btn">ON</button>
+
+        <div id="cameraOptionsPanel" class="camera-options-panel" style="display:none;">
+            <h3>Camera Settings</h3>
+            <div class="setting-item">
+                <label for="cameraSelector">Select Camera:</label>
+                <select id="cameraSelector"></select>
+            </div>
+            <div class="setting-item">
+                <label for="torchToggle">Flash/LED:</label>
+                <button id="torchToggleBtn" class="primary-btn">ON</button>
+            </div>
+            <button id="closeOptionsBtn" class="primary-btn">Close</button>
         </div>
-        <button id="closeOptionsBtn" class="primary-btn">Close</button>
     </div>
-    
     <div id="carousel-container">
      <div id="carousel">
       </div>
@@ -144,28 +161,34 @@
    </section>
 
    <section id="page-analysis" class="page" data-page="4">
-    <h2>Image Analysis</h2>
-    <p class="analysis-subtitle">Top 5 images from each eye selected for analysis.</p>
+        <h2>Analysis & Classification</h2>
 
-    <div class="analysis-section">
-        <h3>LEFT EYE IMAGES</h3>
-        <div id="analysis-grid-left" class="analysis-grid"></div>
-        <div id="analysis-result-left" class="analysis-result" style="display: none;"></div>
-    </div>
-    
-    <div class="analysis-section">
-        <h3>RIGHT EYE IMAGES</h3>
-        <div id="analysis-grid-right" class="analysis-grid"></div>
-        <div id="analysis-result-right" class="analysis-result" style="display: none;"></div>
-    </div>
-    
-    <button id="runAnalysisBtn" class="primary-btn wide-btn">RUN ANALYSIS</button>
+        <button id="runAnalysisBtn" class="primary-btn run-analysis-btn">Run Analysis</button>
 
-    <div class="nav-controls fixed-bottom-controls"> 
-     <button id="backFromAnalysisBtn" class="secondary-btn">BACK</button>
-     <button id="toQuestionnaireBtn" class="primary-btn">TO QUESTIONNAIRE</button>
+        <div class="analysis-container">
+            <div class="analysis-eye-block">
+                <h3>Left Eye (OS)</h3>
+                <p id="analysis-result-left" class="analysis-result-summary">Awaiting classification...</p>
+                
+                <div id="analysis-grid-left" class="analysis-grid">
+                    </div>
+            </div>
+
+            <div class="analysis-eye-block">
+                <h3>Right Eye (OD)</h3>
+                <p id="analysis-result-right" class="analysis-result-summary">Awaiting classification...</p>
+                
+                <div id="analysis-grid-right" class="analysis-grid">
+                    </div>
+            </div>
+        </div>
+
+    <div class="nav-controls fixed-bottom-controls">
+        <button id="backToReviewBtn" class="secondary-btn">BACK</button> 
+        <button id="toTlxBtn" class="primary-btn">TO TLX</button>
     </div>
-   </section>
+
+    </section>
 
    <section id="page-questionnaire" class="page" data-page="5">
     <h2>NASA TLX Questionnaire</h2>
@@ -205,8 +228,10 @@
         
         <div class="overview-section">
             <h3>ANALYSIS RESULTS</h3>
-            <div id="overview-analysis-left" class="analysis-result"></div>
-            <div id="overview-analysis-right" class="analysis-result"></div>
+            <div class="analysis-container overview-results-container">
+                <p id="overview-analysis-left" class="analysis-result-summary">Awaiting classification...</p>
+                <p id="overview-analysis-right" class="analysis-result-summary">Awaiting classification...</p>
+            </div>
         </div>
 
         <div class="overview-section">
@@ -248,6 +273,8 @@
  </div>
 
  <script type="module" src="script.js"></script>
+ <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+ <script src="https://kit.fontawesome.com/a688a7bff8.js" crossorigin="anonymous"></script>
  
  <script>
     if ('serviceWorker' in navigator) {

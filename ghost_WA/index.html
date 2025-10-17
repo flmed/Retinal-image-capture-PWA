@@ -70,6 +70,7 @@
 <section id="page-capture" class="page" data-page="2">
     <div class="camera-container">
      <video id="cameraFeed" autoplay playsinline></video>
+     <canvas id="boundingBoxCanvas"></canvas>
      
      <button id="optionsBtn" class="options-btn">CAMERA SETTINGS</button>
      
@@ -92,6 +93,14 @@
             <div id="imageCountOverlay" class="image-count-overlay">LEFT: 0 | RIGHT: 0</div>
         </div>
         
+        <!-- OD detection on/off toggle -->
+        <div class="controls-row-top" style="justify-content: flex-end; width: 100%;">
+        <label for="odDetectionToggle" class="od-toggle-label">
+            <input type="checkbox" id="odDetectionToggle" class="od-toggle-input" />
+            <span class="od-toggle-slider"></span>
+            <span class="od-toggle-text">OD DETECTION</span>
+        </label>
+        </div>
         <div class="controls-row-buttons">
             <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button> 
             

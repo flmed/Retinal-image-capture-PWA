@@ -376,6 +376,16 @@ label[for="subjectId"] {
     transform: scaleX(-1);*/
 }
 
+#boundingBoxCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20; /* Above the video, below overlays */
+    pointer-events: none; /* Let clicks pass through */
+}
+
 .options-btn {
     position: absolute;
     top: 10px; /* Upper position */
@@ -441,16 +451,14 @@ label[for="subjectId"] {
     margin-top: 10px;
 }
 
-/* NEW: Overlay for Image Counter (MODIFICATION 2) */
+/* Center the image counter (still allows toggle on left) */
 .image-count-overlay {
-    background-color: transparent;
-    color: white;
-    font-size: 0.8em; /* Smaller text */
-    font-weight: 700;
-    padding: 0; 
-    text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+    flex: 1;
     text-align: center;
-    display: inline-block; /* Allows the counter to be centered in its container */
+    color: white;
+    font-size: 0.85em;
+    font-weight: 700;
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
 }
 
 
@@ -477,11 +485,16 @@ label[for="subjectId"] {
     padding-bottom: 5px; /* Separator space above the buttons */
 }
 
+/* --- Combined OD Detection + Counter Row --- */
 .controls-row-top {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr; /* Auto-size the middle for counter */
-    gap: 15px;
-    width: 100%; 
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* toggle left, counter centered-ish */
+    width: 100%;
+    height: 50px; /* slightly taller */
+    padding: 0 15px;
+    box-sizing: border-box;
+    position: relative;
 }
 
 /* MODIFIED: Button Row (Second row - 3 equal columns) */
@@ -491,6 +504,64 @@ label[for="subjectId"] {
     gap: 15px;
     width: 100%; 
     margin: 0;
+}
+/* --- OD Detection Toggle --- */
+
+/* Keep the OD toggle on the left */
+.od-toggle-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex: 1;
+}
+
+/* --- OD Toggle Styles (same as before) --- */
+.od-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: white;
+    font-size: 0.9em;
+    font-weight: 600;
+    user-select: none;
+    z-index: 100;
+}
+
+.od-toggle-input {
+    appearance: none;
+    width: 42px;
+    height: 22px;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 11px;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.od-toggle-input::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    background-color: white;
+    border-radius: 50%;
+    transition: transform 0.3s;
+}
+
+.od-toggle-input:checked {
+    background-color: #28a745; /* bright green when ON */
+}
+
+.od-toggle-input:checked::before {
+    transform: translateX(20px);
+}
+
+.od-toggle-text {
+    color: white;
+    font-size: 0.85em;
+    letter-spacing: 0.5px;
 }
 
 /*.controls-row {

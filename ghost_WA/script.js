@@ -34,9 +34,10 @@ const STATUS = {
 
 // --- NEW: Object Detection Loop (replaces fake auto capture) ---
 let lastActionTime = 0;
-const detectionDelay = 200; // Minimum ms between saved frames
-const detectionThreshold = 0.7; // Customize if needed
+const detectionDelay = 300; // Minimum ms between saved frames
+const detectionThreshold = 0.8; // Customize if needed
 let detectionActive = false;
+let isOdDetectionVisible = false;
 
 // NEW: Counters for automatic naming
 let manualLeftCount = 0;
@@ -473,6 +474,79 @@ function captureFrame() {
     return base64Data;
 }
 
+function drawBoundingBox(box, score) {
+    const canvas = document.getElementById('boundingBoxCanvas');
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('cameraFeed');
+    if (!canvas || !ctx || !video) return;
+
+    // Match canvas size to visible video
+    const rect = video.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Clear previous drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Unpack normalized detection box: [ymin, xmin, ymax, xmax]
+    let [ymin, xmin, ymax, xmax] = box;
+
+    // --- TRANSFORM CORRECTIONS ---
+    // 1. Account for video rotation (180° flip)
+    //    -> Flip both horizontally and vertically
+    ymin = 1 - ymax;
+    ymax = 1 - (box[0]);
+    xmin = 1 - xmax;
+    xmax = 1 - (box[1]);
+
+    // 2. Compute coordinates in display pixels
+    const x = xmin * canvas.width;
+    const y = ymin * canvas.height;
+    const width = (xmax - xmin) * canvas.width;
+    const height = (ymax - ymin) * canvas.height;
+
+    // Draw bounding box
+    ctx.save();
+    ctx.strokeStyle = 'lime';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, width, height);
+
+    // Label
+    ctx.font = '16px Roboto';
+    ctx.fillStyle = 'lime';
+    ctx.fillText(`Optic Disc (${(score * 100).toFixed(1)}%)`, x + 5, y + 20);
+    ctx.restore();
+}
+
+
+function cropFrameByBox(sourceCanvas, box) {
+    // box = [ymin, xmin, ymax, xmax] (normalized 0–1)
+    const [ymin, xmin, ymax, xmax] = box;
+    const srcWidth = sourceCanvas.width;
+    const srcHeight = sourceCanvas.height;
+
+    const x = xmin * srcWidth;
+    const y = ymin * srcHeight;
+    const width = (xmax - xmin) * srcWidth;
+    const height = (ymax - ymin) * srcHeight;
+
+    // Create a new canvas for the cropped area
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = width;
+    cropCanvas.height = height;
+    const cropCtx = cropCanvas.getContext('2d');
+
+    // Copy the region from the source
+    cropCtx.drawImage(
+        sourceCanvas,
+        x, y, width, height, // source region
+        0, 0, width, height  // destination
+    );
+
+    return cropCanvas.toDataURL('image/jpeg', 0.9);
+}
+
+
 function manualImageCapture() {
     // Determine the new image name
     const type = 'MANUAL';
@@ -582,13 +656,16 @@ async function detectObjects() {
         const boxes = (await predictions[1].array())[0][0];
 
         if (scores > detectionThreshold) {
+            drawBoundingBox(boxes, scores);
+
             const currentTime = Date.now();
             if (currentTime - lastActionTime > detectionDelay) {
                 lastActionTime = currentTime;
                 console.log('Object detected with score:', scores);
 
-                // Capture frame and save it
-                const base64 = canvas.toDataURL('image/jpeg', 0.9);
+                // Crop the detected region instead of full frame
+                const croppedBase64 = cropFrameByBox(canvas, boxes);
+
                 const type = 'AUTO';
                 let count;
                 if (currentEye === 'LEFT') {
@@ -602,7 +679,7 @@ async function detectObjects() {
 
                 const newImage = {
                     id: Date.now(),
-                    base64,
+                    base64: croppedBase64, // store cropped image
                     eye: currentEye,
                     selected: false,
                     name,
@@ -612,7 +689,13 @@ async function detectObjects() {
                 renderCarousel();
                 updateCaptureStatus();
             }
+        } else {
+            // Clear bounding box overlay when nothing detected
+            const boxCanvas = document.getElementById('boundingBoxCanvas');
+            const ctx = boxCanvas.getContext('2d');
+            ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
         }
+
     } catch (e) {
         console.warn('Object detection error:', e);
     }
@@ -624,19 +707,26 @@ async function detectObjects() {
 }
 
 function toggleOdCapture() {
+    const odToggle = document.getElementById('odDetectionToggle');
+    const odToggleState = odToggle?.checked || false;
     const odToggleBtn = document.getElementById('autoCaptureToggleBtn');
-    // REMOVED: Status span update
-    
+
+    // Only allow activation if OD detection is ON
+    if (!odToggleState) {
+        alertUser('Turn ON OD Detection before enabling auto capture.', true);
+        return;
+    }
+
     isOdDetectionOn = !isOdDetectionOn;
     if (isOdDetectionOn) {
         odToggleBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
+        odToggleBtn.style.backgroundColor = '#00c853'; // brighter green
         odToggleBtn.classList.add('active');
-        // REMOVED: odStatusSpan update
         startAutoCapture();
     } else {
         odToggleBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+        odToggleBtn.style.backgroundColor = '#28a745'; // inactive green
         odToggleBtn.classList.remove('active');
-        // REMOVED: odStatusSpan update
         stopAutoCapture();
     }
 }
@@ -644,8 +734,8 @@ function updateCaptureStatus() {
     const leftCount = capturedImages.filter(img => img.eye === 'LEFT').length;
     const rightCount = capturedImages.filter(img => img.eye === 'RIGHT').length;
     
-    // MODIFICATION 1: Update the overlay element with full words
-    const imageCounterOverlay = document.getElementById('imageCountOverlay');
+    // FIX: Changed 'imageCountOverlay' to 'imageCounter' to match the HTML ID.
+    const imageCounterOverlay = document.getElementById('imageCounter');
     if (imageCounterOverlay) {
         imageCounterOverlay.textContent = `LEFT: ${leftCount} | RIGHT: ${rightCount}`;
     }
@@ -1189,6 +1279,42 @@ function setupEventListeners() {
     document.getElementById('manualCaptureBtn')?.addEventListener('click', manualImageCapture); 
     document.getElementById('backFromCaptureBtn')?.addEventListener('click', () => navigateTo(1)); 
     document.getElementById('toReviewBtnBottom')?.addEventListener('click', () => navigateTo(3));
+
+    // --- OD Detection Toggle (NEW) ---
+    const odToggle = document.getElementById('odDetectionToggle');
+    const autoBtn = document.getElementById('autoCaptureToggleBtn');
+
+    if (odToggle && autoBtn) {
+        odToggle.addEventListener('change', () => {
+            isOdDetectionVisible = odToggle.checked;
+
+            if (isOdDetectionVisible) {
+                console.log("Optic Disc detection overlay enabled.");
+
+                // Mark AUTO CAPTURE as inactive green (ready)
+                autoBtn.classList.remove('secondary-btn');
+                autoBtn.classList.add('primary-btn');
+                autoBtn.style.backgroundColor = '#28a745';
+                autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+            } else {
+                console.log("Optic Disc detection overlay disabled.");
+
+                // Stop detection and clear the bounding box overlay
+                isOdDetectionOn = false;
+                const boxCanvas = document.getElementById('boundingBoxCanvas');
+                if (boxCanvas) {
+                    const ctx = boxCanvas.getContext('2d');
+                    ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
+                }
+
+                // Reset AUTO CAPTURE button to default state
+                autoBtn.classList.remove('primary-btn');
+                autoBtn.classList.add('secondary-btn');
+                autoBtn.style.backgroundColor = '';
+                autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+            }
+        });
+    }
 
     // Camera Options (NEW, Step 2)
     document.getElementById('optionsBtn')?.addEventListener('click', () => toggleOptionsPanel(true));

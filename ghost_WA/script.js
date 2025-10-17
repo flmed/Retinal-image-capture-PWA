@@ -32,6 +32,12 @@ const STATUS = {
     GREEN: { icon: 'fa-check-circle', color: 'green', text: 'Loaded' }
 };
 
+// --- NEW: Object Detection Loop (replaces fake auto capture) ---
+let lastActionTime = 0;
+const detectionDelay = 200; // Minimum ms between saved frames
+const detectionThreshold = 0.7; // Customize if needed
+let detectionActive = false;
+
 // NEW: Counters for automatic naming
 let manualLeftCount = 0;
 let manualRightCount = 0;
@@ -530,12 +536,13 @@ function mockImageCapture() {
 }
 
 function startAutoCapture() {
-    if (autoCaptureInterval) clearInterval(autoCaptureInterval);
-    autoCaptureInterval = setInterval(() => {
-        if (currentPage === 2 && isOdDetectionOn) {
-            mockImageCapture();
-        }
-    }, 400); 
+    if (objectDetectionModel) {
+        console.log('Starting object detection auto capture...');
+        isOdDetectionOn = true;
+        window.requestAnimationFrame(detectObjects);
+    } else {
+        alertUser('Object Detection model not loaded yet.', true);
+    }
 }
 function stopAutoCapture() {
     if (autoCaptureInterval) {
@@ -543,6 +550,79 @@ function stopAutoCapture() {
         autoCaptureInterval = null;
     }
 }
+
+async function detectObjects() {
+    if (!isOdDetectionOn || !objectDetectionModel) {
+        window.requestAnimationFrame(detectObjects);
+        return;
+    }
+
+    const video = document.getElementById('cameraFeed');
+    if (!video || video.readyState < 2) {
+        window.requestAnimationFrame(detectObjects);
+        return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    tf.engine().startScope();
+    try {
+        const img = tf.browser.fromPixels(canvas);
+        const resized = tf.image.resizeBilinear(img, [640, 480]);
+        const casted = resized.cast('int32');
+        const expanded = casted.expandDims(0);
+        const predictions = await objectDetectionModel.executeAsync(expanded);
+
+        // Model-dependent outputs (adjust indices if your model differs)
+        const scores = (await predictions[3].array())[0][0];
+        const boxes = (await predictions[1].array())[0][0];
+
+        if (scores > detectionThreshold) {
+            const currentTime = Date.now();
+            if (currentTime - lastActionTime > detectionDelay) {
+                lastActionTime = currentTime;
+                console.log('Object detected with score:', scores);
+
+                // Capture frame and save it
+                const base64 = canvas.toDataURL('image/jpeg', 0.9);
+                const type = 'AUTO';
+                let count;
+                if (currentEye === 'LEFT') {
+                    autoLeftCount++;
+                    count = autoLeftCount;
+                } else {
+                    autoRightCount++;
+                    count = autoRightCount;
+                }
+                const name = `${currentEye.charAt(0)}A${count}`;
+
+                const newImage = {
+                    id: Date.now(),
+                    base64,
+                    eye: currentEye,
+                    selected: false,
+                    name,
+                    type
+                };
+                capturedImages.push(newImage);
+                renderCarousel();
+                updateCaptureStatus();
+            }
+        }
+    } catch (e) {
+        console.warn('Object detection error:', e);
+    }
+    tf.engine().endScope();
+
+    if (isOdDetectionOn) {
+        window.requestAnimationFrame(detectObjects);
+    }
+}
+
 function toggleOdCapture() {
     const odToggleBtn = document.getElementById('autoCaptureToggleBtn');
     // REMOVED: Status span update

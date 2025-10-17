@@ -451,14 +451,15 @@ label[for="subjectId"] {
     margin-top: 10px;
 }
 
-/* Center the image counter (still allows toggle on left) */
+/* REPLACEMENT: Larger font and aligned to the right */
 .image-count-overlay {
-    flex: 1;
-    text-align: center;
     color: white;
-    font-size: 0.85em;
+    font-size: 1.1em; /* Increased font size */
     font-weight: 700;
     text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+    text-align: right; /* Aligns text to the right side of its container */
+    flex-grow: 1; /* Allows it to take up available space */
+    padding-right: 10px; /* Adds some spacing from the edge */
 }
 
 
@@ -478,21 +479,15 @@ label[for="subjectId"] {
     align-items: center;
     gap: 8px; /* Reduced space between the two new rows */
 }
-/* NEW: Style for the Image Counter's dedicated row */
-.controls-row-counter {
-    width: 100%; /* Spans full width */
-    text-align: center;
-    padding-bottom: 5px; /* Separator space above the buttons */
-}
 
-/* --- Combined OD Detection + Counter Row --- */
+/* REPLACEMENT: Updated style for the combined row */
 .controls-row-top {
     display: flex;
     align-items: center;
-    justify-content: space-between; /* toggle left, counter centered-ish */
+    justify-content: space-between; /* Pushes toggle left and counter right */
     width: 100%;
-    height: 50px; /* slightly taller */
-    padding: 0 15px;
+    height: 40px; /* Adjusted height */
+    padding: 0 5px; /* Adjusted padding */
     box-sizing: border-box;
     position: relative;
 }
@@ -558,10 +553,12 @@ label[for="subjectId"] {
     transform: translateX(20px);
 }
 
+/* REPLACEMENT: Larger font for the toggle text */
 .od-toggle-text {
     color: white;
-    font-size: 0.85em;
+    font-size: 1em; /* Increased font size */
     letter-spacing: 0.5px;
+    font-weight: 600;
 }
 
 /*.controls-row {
@@ -639,7 +636,7 @@ label[for="subjectId"] {
     background-color: var(--success-color); 
     box-shadow: 0 0 10px rgba(40, 167, 69, 0.7);
 }
-#carousel-container { width: 95%; margin-top: 2px; }
+#carousel-container { width: 95%; margin-top: auto; }
 #carousel {
     display: flex;
     overflow-x: auto;

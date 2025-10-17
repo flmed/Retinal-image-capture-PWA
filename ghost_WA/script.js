@@ -7,7 +7,7 @@ let capturedImages = [];
 // MODIFICATION: Add operatorId to subjectInfo
 let subjectInfo = { operatorId: '', id: '', notes: '' };
 let isSelectionMode = false;
-let isOdDetectionOn = false; 
+let isAutoCaptureActive = false; // Renamed from isOdDetectionOn
 let autoCaptureInterval = null; 
 const MAX_CAROUSEL_IMAGES = 5;
 
@@ -175,7 +175,11 @@ function navigateTo(step) {
     
     if (currentPage === 2 && step !== 2) {
         stopCamera();
-        stopAutoCapture(); 
+        // REMOVED: stopAutoCapture(); which caused the error
+
+        // ADDED: Explicitly turn off detection states when leaving the page
+        isOdDetectionVisible = false;
+        isAutoCaptureActive = false;
     }
 
     // MODIFICATION: Add new page 6 to the list of pages to deactivate
@@ -609,25 +613,15 @@ function mockImageCapture() {
     updateCaptureStatus();
 }
 
-function startAutoCapture() {
-    if (objectDetectionModel) {
-        console.log('Starting object detection auto capture...');
-        isOdDetectionOn = true;
-        window.requestAnimationFrame(detectObjects);
-    } else {
-        alertUser('Object Detection model not loaded yet.', true);
-    }
-}
-function stopAutoCapture() {
-    if (autoCaptureInterval) {
-        clearInterval(autoCaptureInterval);
-        autoCaptureInterval = null;
-    }
-}
+
 
 async function detectObjects() {
-    if (!isOdDetectionOn || !objectDetectionModel) {
-        window.requestAnimationFrame(detectObjects);
+    // The loop is now controlled by the visibility toggle, not the capture button
+    if (!isOdDetectionVisible || !objectDetectionModel) {
+        // Keep the loop idle until the toggle is on
+        if (isOdDetectionVisible) {
+            window.requestAnimationFrame(detectObjects);
+        }
         return;
     }
 
@@ -651,7 +645,6 @@ async function detectObjects() {
         const expanded = casted.expandDims(0);
         const predictions = await objectDetectionModel.executeAsync(expanded);
 
-        // Model-dependent outputs (adjust indices if your model differs)
         const scores = (await predictions[3].array())[0][0];
         const boxes = (await predictions[1].array())[0][0];
 
@@ -659,11 +652,11 @@ async function detectObjects() {
             drawBoundingBox(boxes, scores);
 
             const currentTime = Date.now();
-            if (currentTime - lastActionTime > detectionDelay) {
+            // ✅ KEY CHANGE: Only save an image if auto-capture is explicitly activated
+            if (isAutoCaptureActive && (currentTime - lastActionTime > detectionDelay)) {
                 lastActionTime = currentTime;
-                console.log('Object detected with score:', scores);
+                console.log('Auto-capturing object with score:', scores);
 
-                // Crop the detected region instead of full frame
                 const croppedBase64 = cropFrameByBox(canvas, boxes);
 
                 const type = 'AUTO';
@@ -679,7 +672,7 @@ async function detectObjects() {
 
                 const newImage = {
                     id: Date.now(),
-                    base64: croppedBase64, // store cropped image
+                    base64: croppedBase64,
                     eye: currentEye,
                     selected: false,
                     name,
@@ -690,7 +683,6 @@ async function detectObjects() {
                 updateCaptureStatus();
             }
         } else {
-            // Clear bounding box overlay when nothing detected
             const boxCanvas = document.getElementById('boundingBoxCanvas');
             const ctx = boxCanvas.getContext('2d');
             ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
@@ -701,35 +693,34 @@ async function detectObjects() {
     }
     tf.engine().endScope();
 
-    if (isOdDetectionOn) {
+    // Keep the loop going as long as the toggle is on
+    if (isOdDetectionVisible) {
         window.requestAnimationFrame(detectObjects);
     }
 }
 
 function toggleOdCapture() {
     const odToggle = document.getElementById('odDetectionToggle');
-    const odToggleState = odToggle?.checked || false;
-    const odToggleBtn = document.getElementById('autoCaptureToggleBtn');
-
-    // Only allow activation if OD detection is ON
-    if (!odToggleState) {
+    // Prevent activation if the main OD toggle is off
+    if (!odToggle?.checked) {
         alertUser('Turn ON OD Detection before enabling auto capture.', true);
         return;
     }
 
-    isOdDetectionOn = !isOdDetectionOn;
-    if (isOdDetectionOn) {
-        odToggleBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
-        odToggleBtn.style.backgroundColor = '#00c853'; // brighter green
-        odToggleBtn.classList.add('active');
-        startAutoCapture();
+    isAutoCaptureActive = !isAutoCaptureActive; // Toggle the saving state
+
+    const autoBtn = document.getElementById('autoCaptureToggleBtn');
+    if (isAutoCaptureActive) {
+        autoBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
+        autoBtn.style.backgroundColor = '#00c853'; // Brighter green
+        autoBtn.classList.add('active');
     } else {
-        odToggleBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
-        odToggleBtn.style.backgroundColor = '#28a745'; // inactive green
-        odToggleBtn.classList.remove('active');
-        stopAutoCapture();
+        autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+        autoBtn.style.backgroundColor = '#28a745'; // Inactive green
+        autoBtn.classList.remove('active');
     }
 }
+
 function updateCaptureStatus() {
     const leftCount = capturedImages.filter(img => img.eye === 'LEFT').length;
     const rightCount = capturedImages.filter(img => img.eye === 'RIGHT').length;
@@ -1287,28 +1278,32 @@ function setupEventListeners() {
     if (odToggle && autoBtn) {
         odToggle.addEventListener('change', () => {
             isOdDetectionVisible = odToggle.checked;
+            const boxCanvas = document.getElementById('boundingBoxCanvas');
+            const ctx = boxCanvas?.getContext('2d');
 
             if (isOdDetectionVisible) {
                 console.log("Optic Disc detection overlay enabled.");
+                // Start the detection loop for visualization
+                window.requestAnimationFrame(detectObjects);
 
-                // Mark AUTO CAPTURE as inactive green (ready)
+                // Style the button to show it's ready
                 autoBtn.classList.remove('secondary-btn');
                 autoBtn.classList.add('primary-btn');
-                autoBtn.style.backgroundColor = '#28a745';
+                autoBtn.style.backgroundColor = '#28a745'; // Inactive green
                 autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
             } else {
                 console.log("Optic Disc detection overlay disabled.");
 
-                // Stop detection and clear the bounding box overlay
-                isOdDetectionOn = false;
-                const boxCanvas = document.getElementById('boundingBoxCanvas');
-                if (boxCanvas) {
-                    const ctx = boxCanvas.getContext('2d');
+                // Also deactivate saving if it was on
+                isAutoCaptureActive = false;
+
+                // Clear the bounding box overlay
+                if (ctx) {
                     ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
                 }
 
-                // Reset AUTO CAPTURE button to default state
-                autoBtn.classList.remove('primary-btn');
+                // Reset the button to its default off-state
+                autoBtn.classList.remove('primary-btn', 'active');
                 autoBtn.classList.add('secondary-btn');
                 autoBtn.style.backgroundColor = '';
                 autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';

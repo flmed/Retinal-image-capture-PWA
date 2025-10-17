@@ -2,6 +2,8 @@
 /*
 /Web Application
 # Exceptions
-!/ghost_WA/
-!/ghost_WA/**
+!ghost_WA\index.html
+!ghost_WA\script.js
+!ghost_WA\service-worker.js
+!ghost_WA\style.css
 !/.gitignore

@@ -51,7 +51,7 @@ let currentDeviceId = null;
 let isTorchOn = true; // Default torch ON behavior
 
 // Lightbox state
-let lightboxImageSet = [];
+let lightboxImageSetet = [];
 let lightboxCurrentIndex = 0;
 
 // MODIFICATION: New state to store analysis and TLX results
@@ -799,11 +799,9 @@ function toggleOdCapture() {
     const autoBtn = document.getElementById('autoCaptureToggleBtn');
     if (isAutoCaptureActive) {
         autoBtn.textContent = 'AUTO CAPTURE (ACTIVE)';
-        autoBtn.style.backgroundColor = '#00c853'; // Brighter green
         autoBtn.classList.add('active');
     } else {
         autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
-        autoBtn.style.backgroundColor = '#28a745'; // Inactive green
         autoBtn.classList.remove('active');
     }
 }
@@ -985,8 +983,8 @@ function clearAllImages() {
 // --- Lightbox Functionality (UNCHANGED) ---
 
 function openLightbox(imageId, imageSet) {
-    lightboxImageSet = imageSet;
-    lightboxCurrentIndex = lightboxImageSet.findIndex(img => img.id === imageId);
+    lightboxImageSetet = imageSet;
+    lightboxCurrentIndex = lightboxImageSetet.findIndex(img => img.id === imageId);
     
     if (lightboxCurrentIndex === -1) return;
 
@@ -1003,25 +1001,112 @@ function closeLightbox() {
 }
 
 function updateLightboxImage() {
-    const img = lightboxImageSet[lightboxCurrentIndex];
-    document.getElementById('lightbox-image').src = img.base64;
-    
-    // MODIFIED: Update info display to include image name
-    document.getElementById('lightbox-info').textContent = `EYE: ${img.eye} (${img.name})`;
-    
-    // Update select button appearance
+    // Defensive checks: ensure we have an image set and an index
+    if (!Array.isArray(lightboxImageSetet) || lightboxImageSetet.length === 0) {
+        console.warn('Lightbox: no images to show.');
+        // Hide image if possible and show a placeholder text
+        const lightboxImgElEmpty = document.getElementById('lightbox-image');
+        const infoElEmpty = document.getElementById('lightbox-info');
+        if (lightboxImgElEmpty) {
+            lightboxImgElEmpty.src = '';
+            lightboxImgElEmpty.alt = 'No image available';
+        }
+        if (infoElEmpty) infoElEmpty.textContent = 'Enlarged view';
+        // Disable nav buttons if present
+        const prevBtnEmpty = document.getElementById('lightbox-prev');
+        const nextBtnEmpty = document.getElementById('lightbox-next');
+        if (prevBtnEmpty) prevBtnEmpty.disabled = true;
+        if (nextBtnEmpty) nextBtnEmpty.disabled = true;
+        return;
+    }
+
+    // Clamp index within bounds
+    if (typeof lightboxCurrentIndex !== 'number' || lightboxCurrentIndex < 0) lightboxCurrentIndex = 0;
+    if (lightboxCurrentIndex >= lightboxImageSetet.length) lightboxCurrentIndex = lightboxImageSetet.length - 1;
+
+    const img = lightboxImageSetet[lightboxCurrentIndex];
+    if (!img) {
+        console.warn('Lightbox: invalid image at current index.');
+        return;
+    }
+
+    // Elements
+    const lightboxImgEl = document.getElementById('lightbox-image');
+    const infoEl = document.getElementById('lightbox-info');
+    const prevBtn = document.getElementById('lightbox-prev');
+    const nextBtn = document.getElementById('lightbox-next');
     const selectBtn = document.getElementById('lightboxSelectBtn');
-    selectBtn.textContent = img.selected ? 'Deselect' : 'Select';
-    selectBtn.classList.toggle('active', img.selected);
+    const deleteBtn = document.getElementById('lightboxDeleteBtn');
+
+    // Update main image element
+    if (lightboxImgEl) {
+        if (img.base64) {
+            lightboxImgEl.src = img.base64;
+            lightboxImgEl.alt = img.name ? `${img.eye || ''} - ${img.name}` : 'Captured Image';
+        } else {
+            lightboxImgEl.src = '';
+            lightboxImgEl.alt = 'No image available';
+        }
+    }
+
+    // Build info HTML: name on top, OD / classification score below (as requested)
+    if (infoEl) {
+        const nameText = img.name ? String(img.name) : '';
+        // Prefer classifier probability -> img.classification.probability, then img.score, then img.odScore
+        let scorePct = null;
+        if (img.classification && typeof img.classification.probability === 'number' && !isNaN(img.classification.probability)) {
+            scorePct = img.classification.probability;
+        } else if (typeof img.score === 'number' && !isNaN(img.score)) {
+            scorePct = img.score;
+        } else if (typeof img.odScore === 'number' && !isNaN(img.odScore)) {
+            scorePct = img.odScore;
+        }
+
+        // Also show a textual label if available (classification class / resultLabel / classification.result)
+        const label = img.resultLabel || (img.classification && img.classification.class) || (img.classification && img.classification.result) || '';
+
+        // Compose HTML — name first (top), score/label second (below)
+        let html = `<div class="lightbox-name" style="font-weight:700;margin-bottom:6px;">${nameText || 'Unnamed image'}</div>`;
+
+        if (label && scorePct !== null) {
+            // e.g. "ODE 87.3%"
+            const pct = (Number(scorePct) * 100).toFixed(1);
+            html += `<div class="lightbox-od-score">${label} ${pct}%</div>`;
+        } else if (label) {
+            html += `<div class="lightbox-od-score">${label}</div>`;
+        } else if (scorePct !== null) {
+            const pct = (Number(scorePct) * 100).toFixed(1);
+            html += `<div class="lightbox-od-score">Score: ${pct}%</div>`;
+        } else {
+            html += `<div class="lightbox-od-score">No score available</div>`;
+        }
+
+        infoEl.innerHTML = html;
+    }
+
+    // Update select/deselect button if present
+    if (selectBtn) {
+        selectBtn.textContent = img.selected ? 'Deselect' : 'Select';
+        selectBtn.classList.toggle('active', !!img.selected);
+    }
+
+    // Update delete button enabled state if present
+    if (deleteBtn) {
+        deleteBtn.disabled = false; // allow deletion by default; caller can change if needed
+    }
+
+    // Update navigation buttons (disable at bounds)
+    if (prevBtn) prevBtn.disabled = (lightboxCurrentIndex === 0);
+    if (nextBtn) nextBtn.disabled = (lightboxCurrentIndex === lightboxImageSetet.length - 1);
 }
 
 function showNextImage() {
-    lightboxCurrentIndex = (lightboxCurrentIndex + 1) % lightboxImageSet.length;
+    lightboxCurrentIndex = (lightboxCurrentIndex + 1) % lightboxImageSetet.length;
     updateLightboxImage();
 }
 
 function showPrevImage() {
-    lightboxCurrentIndex = (lightboxCurrentIndex - 1 + lightboxImageSet.length) % lightboxImageSet.length;
+    lightboxCurrentIndex = (lightboxCurrentIndex - 1 + lightboxImageSetet.length) % lightboxImageSetet.length;
     updateLightboxImage();
 }
 
@@ -1030,7 +1115,7 @@ function selectImageFromLightbox() {
     if (!isSelectionMode) {
         isSelectionMode = true; // Automatically enter selection mode
     }
-    const currentImg = lightboxImageSet[lightboxCurrentIndex];
+    const currentImg = lightboxImageSetet[lightboxCurrentIndex];
     currentImg.selected = !currentImg.selected;
     updateLightboxImage(); // Update button text
     updateDeleteButtonCount(); // Update main page button count
@@ -1038,7 +1123,7 @@ function selectImageFromLightbox() {
 
 function deleteImageFromLightbox() {
     // Get the ID of the image currently being viewed
-    const currentImgId = lightboxImageSet[lightboxCurrentIndex].id; 
+    const currentImgId = lightboxImageSetet[lightboxCurrentIndex].id; 
     
     if (customConfirm(`Are you sure you want to delete this image?`)) {
         // Remove from the main capturedImages array
@@ -1050,8 +1135,8 @@ function deleteImageFromLightbox() {
         
         // MODIFICATION 2: Update the lightbox image set and index
         
-        // Find the full set of images for the current eye to rebuild lightboxImageSet
-        const eye = lightboxImageSet[lightboxCurrentIndex].eye;
+        // Find the full set of images for the current eye to rebuild lightboxImageSetet
+        const eye = lightboxImageSetet[lightboxCurrentIndex].eye;
         const newImageSet = capturedImages.filter(img => img.eye === eye);
         
         if (newImageSet.length === 0) {
@@ -1062,11 +1147,11 @@ function deleteImageFromLightbox() {
             return;
         }
 
-        lightboxImageSet = newImageSet;
+        lightboxImageSetet = newImageSet;
         
         // Adjust the index: if we were at the end, jump to the new last image (which is now index - 1). Otherwise, stay at the current index (which is now the next image).
         // Since we removed the image, the list shrinks, and the next image takes its place.
-        if (lightboxCurrentIndex >= lightboxImageSet.length) {
+        if (lightboxCurrentIndex >= lightboxImageSetet.length) {
             lightboxCurrentIndex = 0; // If deleting the last image, wrap to the beginning (or new last)
         }
         
@@ -1099,30 +1184,40 @@ function renderAnalysisPage() {
     const createAnalysisImageWrapper = (img) => {
         const wrapper = document.createElement('div');
         wrapper.className = 'analysis-image-wrapper top-k-image';
-        
+
         const imageEl = document.createElement('img');
         imageEl.src = img.base64;
         imageEl.alt = `${img.eye} Image ${img.name}`;
-        
+
+        // Score label (top)
         const scoreLabel = document.createElement('div');
         scoreLabel.className = 'analysis-score-label';
 
+        // Name label (bottom)
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'analysis-name-label';
+        nameLabel.textContent = img.name || '';
+
         const classification = img.classification;
         if (classification && classification.class && classification.class !== 'error') {
-            // Display primary model's class and confidence (e.g., ODE 95%)
-            scoreLabel.textContent = `${classification.class} ${
-                (classification.probability * 100).toFixed(0)
-            }%`;
+            // Use stored probability (should now exist after the runAnalysis fix)
+            const pct = (typeof classification.probability === 'number')
+                ? `${(classification.probability * 100).toFixed(0)}%`
+                : '?%';
+            scoreLabel.textContent = `${classification.class} ${pct}`;
             scoreLabel.classList.add(`score-${classification.class.toLowerCase().replace('_', '-')}`);
         } else {
-            // Display odScore or filename if classification hasn't run or failed
-            const displayScore = (img.odScore && img.odScore > 0) ? `OD: ${(img.odScore * 100).toFixed(1)}%` : img.name;
+            // Fall back to odScore (if present) or show placeholder
+            const displayScore = (typeof img.odScore === 'number' && img.odScore > 0)
+                ? `OD: ${(img.odScore * 100).toFixed(1)}%`
+                : '—';
             scoreLabel.textContent = displayScore;
             scoreLabel.classList.add('score-unanalyzed');
         }
-        
+
         wrapper.appendChild(imageEl);
-        wrapper.appendChild(scoreLabel);
+        wrapper.appendChild(scoreLabel); // top
+        wrapper.appendChild(nameLabel);  // bottom
         return wrapper;
     };
     
@@ -1170,7 +1265,7 @@ async function runAnalysis() {
     const analysisBtn = document.getElementById('runAnalysisBtn');
     analysisBtn.disabled = true;
     analysisBtn.textContent = 'Analyzing Top 5...';
-    
+
     if (!classifierModel || !pretrainedClassifierModel) {
         alertUser("Classification models are still loading or failed to load. Please wait.", true);
         analysisBtn.disabled = false;
@@ -1181,76 +1276,91 @@ async function runAnalysis() {
     const allLeftImages = capturedImages.filter(img => img.eye === 'LEFT');
     const allRightImages = capturedImages.filter(img => img.eye === 'RIGHT');
 
-    // Filter to only the top K images for classification
     const imagesToClassifyLeft = findTopKValues(allLeftImages, TOP_K_IMAGES);
     const imagesToClassifyRight = findTopKValues(allRightImages, TOP_K_IMAGES);
 
     /**
      * Runs classification for the top K images of one eye and determines a majority class.
      */
-    const analyzeEye = async (images) => {
-        if (images.length === 0) return { text: 'NO IMAGES CAPTURED.', class: 'result-warning' };
-        
-        const predictions = []; // Primary model predictions
-        
+    const analyzeEye = async (images, eyeName = 'Unknown') => {
+        if (images.length === 0)
+            return { text: 'NO IMAGES CAPTURED.', class: 'result-warning' };
+
+        console.log(`▶ Analyzing ${images.length} ${eyeName} images...`);
+        const predictions = [];
+
         for (const img of images) {
             const imageElement = await getImageDataFromBase64(img.base64);
-            if (!imageElement) continue;
+            if (!imageElement) {
+                console.warn('Skipping image: could not decode base64');
+                continue;
+            }
 
+            // --- Run model prediction ---
             const prediction = await predict(imageElement, classifierModel);
+            if (!prediction || !prediction.class) {
+                console.warn('Prediction failed or empty for one image.');
+                continue;
+            }
+
             predictions.push(prediction);
 
-            // Mark and store classification results on the image object
-            img.classification = { 
+            // Store per-image classification results
+            img.classification = {
                 result: `${prediction.class} (${(prediction.probability * 100).toFixed(0)}%)`,
                 class: prediction.class,
+                probability: prediction.probability,
+                rawScore: prediction.rawScore ?? prediction.probability,
                 isTopK: true
             };
-        }
-        
+            img.score = prediction.probability;
+            img.resultLabel = prediction.class;
+        } // <-- this brace was missing before!
+
         // --- STEP 2: Determine Final Result and Text ---
         const majorityClass = getMajorityClass(predictions);
         let resultText = '';
-        let resultClass = 'result-warning'; // Default to amber/warning
+        let resultClass = 'result-warning'; // Default amber
         const totalVotes = predictions.filter(p => p.class !== 'error').length;
         const odeVotes = predictions.filter(p => p.class === 'ODE').length;
-        
+
         if (majorityClass.class === 'N/A') {
             resultText = 'Analysis failed: No valid images found.';
         } else if (majorityClass.class === 'not_ODE') {
             const notOdeVotes = totalVotes - odeVotes;
             resultText = `No Optic Disc Edema detected. Vote ratio: ${notOdeVotes}/${totalVotes}`;
-            resultClass = 'result-success'; // Deep green/success
+            resultClass = 'result-success';
         } else if (majorityClass.class === 'ODE') {
             resultText = `Optic Disc Edema suspected. Further review recommended. Vote ratio: ${odeVotes}/${totalVotes}`;
         } else if (majorityClass.class === 'INCONCLUSIVE') {
             resultText = `Non-conclusive result. Please repeat image capture. Vote ratio: ${odeVotes}/${totalVotes}`;
         }
 
+        console.log(`✔ ${eyeName} analysis complete → ${majorityClass.class} (${odeVotes}/${totalVotes})`);
         return { text: resultText, class: resultClass };
     };
 
     alertUser("Starting classification of top 5 images...");
-    
-    // Run analysis for both eyes
+
+    // Run analysis for both eyes in parallel
     const [leftResult, rightResult] = await Promise.all([
-        analyzeEye(imagesToClassifyLeft),
-        analyzeEye(imagesToClassifyRight)
+        analyzeEye(imagesToClassifyLeft, 'LEFT'),
+        analyzeEye(imagesToClassifyRight, 'RIGHT')
     ]);
 
-    // Store the results and their classes
+    // Store and display results
     analysisResults.left = leftResult.text;
     analysisResults.right = rightResult.text;
     analysisResults.leftClass = leftResult.class;
     analysisResults.rightClass = rightResult.class;
 
-    // Refresh the UI display
-    renderAnalysisPage(); 
+    renderAnalysisPage();
 
     analysisBtn.disabled = false;
     analysisBtn.textContent = 'Run Analysis';
     alertUser("Analysis complete.");
 }
+
 
 // NEW HELPER: Get the image data required by TF from the Base64 string
 // Returns a Promise that resolves to an HTMLCanvasElement suitable for tf.browser.fromPixels

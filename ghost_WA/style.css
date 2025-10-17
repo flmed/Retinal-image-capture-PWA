@@ -461,7 +461,7 @@ label[for="subjectId"] {
     color: white;
     font-size: 1.1em; /* Increased font size */
     font-weight: 700;
-    text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+    /*text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);*/
     text-align: right; /* Aligns text to the right side of its container */
     flex-grow: 1; /* Allows it to take up available space */
     padding-right: 10px; /* Adds some spacing from the edge */
@@ -541,10 +541,10 @@ label[for="subjectId"] {
 .od-toggle-input::before {
     content: "";
     position: absolute;
-    top: 3px;
+    top: 0.5px;
     left: 3px;
-    width: 16px;
-    height: 16px;
+    width: 21px;
+    height: 21px;
     background-color: white;
     border-radius: 50%;
     transition: transform 0.3s;
@@ -561,7 +561,7 @@ label[for="subjectId"] {
 /* REPLACEMENT: Larger font for the toggle text */
 .od-toggle-text {
     color: white;
-    font-size: 1em; /* Increased font size */
+    font-size: 1.1em; /* Increased font size */
     letter-spacing: 0.5px;
     font-weight: 600;
 }
@@ -636,6 +636,10 @@ label[for="subjectId"] {
 /* Re-apply rounding to the buttons to match the container's rounding where applicable */
 .eye-toggle-container > #eyeToggleLeft { border-radius: 8px 0 0 8px; }
 .eye-toggle-container > #eyeToggleRight { border-radius: 0 8px 8px 0; }
+
+#autoCaptureToggleBtn {
+    background-color: #1b5e20; /* darker muted green for inactive */
+}
 
 #autoCaptureToggleBtn.active {
     background-color: var(--success-color); 
@@ -818,6 +822,15 @@ label[for="subjectId"] {
     ---------------------------------- */
 /* --- Analysis Page Styling (Page 4) --- */
 
+.run-analysis-btn {
+    background-color: var(--success-color);
+    color: white;
+    font-weight: 700;
+}
+.run-analysis-btn:hover {
+    background-color: #218838;
+}
+
 .analysis-container {
     display: flex;
     justify-content: space-around;
@@ -868,50 +881,69 @@ label[for="subjectId"] {
 
 
 /* Image Grid Styling */
+/* Fix for overlapping in Analysis and Overview galleries */
 .analysis-grid {
     display: grid;
-    /* Create a responsive grid of thumbnails */
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+    grid-template-columns: 1fr 1fr; /* exactly 2 columns */
     gap: 10px;
     padding: 10px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    max-height: 300px; /* Limit height to prevent page overflow */
+    max-height: 300px;
     overflow-y: auto;
+    align-content: start; /* ensures proper stacking when scrolling */
 }
 
-/* Image Wrapper for Positioning the Label */
+/* Use the same aspect ratio fix as review-image-wrapper */
 .analysis-image-wrapper {
     position: relative;
+    padding-bottom: 100%; /* fixes height so images don't overlap */
+    height: 0;
+    width: 100%;
     overflow: hidden;
-    border-radius: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
     background: #fff;
-    aspect-ratio: 1 / 1; /* Keep images square */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .analysis-image-wrapper img {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    display: block;
 }
 
 /* Classification Score Overlay */
 .analysis-score-label {
     position: absolute;
-    bottom: 0;
+    top: 0;              /* put score at the top */
     left: 0;
     width: 100%;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0,0,0,0.75);
     color: white;
-    font-size: 0.8em;
-    font-weight: 500;
-    padding: 4px 2px;
+    font-size: 0.85em;
+    font-weight: 700;
+    padding: 6px 6px;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    z-index: 30;
+}
+.analysis-name-label {
+    position: absolute;
+    bottom: 0;           /* name at the bottom */
+    left: 0;
+    width: 100%;
+    background: rgba(255,255,255,0.95);
+    color: var(--text-dark);
+    font-size: 0.9em;
+    font-weight: 700;
+    padding: 6px 6px;
+    text-align: center;
+    z-index: 30;
 }
 
 /* Color coding for individual thumbnail results */
@@ -1110,6 +1142,16 @@ textarea {
     text-align: center;
     align-self: center; /* Vertically center */
     white-space: nowrap; /* Prevent wrapping */
+}
+
+#lightbox-info .lightbox-name {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+#lightbox-info .lightbox-od-score {
+    font-size: 0.9em;
+    color: var(--secondary-color);
 }
 
 .lightbox-nav {

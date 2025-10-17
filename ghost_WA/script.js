@@ -55,7 +55,15 @@ let lightboxImageSet = [];
 let lightboxCurrentIndex = 0;
 
 // MODIFICATION: New state to store analysis and TLX results
-let analysisResults = { left: 'Not yet run.', right: 'Not yet run.' };
+let analysisResults = { 
+    left: 'Awaiting classification...', 
+    right: 'Awaiting classification...', 
+    leftClass: '', 
+    rightClass: '' 
+};
+const CLASSIFICATION_THRESHOLD = 0.5;
+const TOP_K_IMAGES = 5;
+
 let tlxAnswers = {};
 
 // Official NASA TLX Questions
@@ -456,26 +464,53 @@ function captureFrame() {
         return null;
     }
     
+    // ✅ FIX: Use video.videoWidth and video.videoHeight for the highest 
+    // resolution, non-distorted frame.
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+
+    if (videoWidth === 0 || videoHeight === 0) {
+        console.warn("Video dimensions are zero, stream might not be ready. Falling back to default.");
+    }
+    
     // Create a temporary canvas element
     const canvas = document.createElement('canvas');
     
-    // Determine the target resolution for the captured image (e.g., matching the video track settings)
-    const videoTrack = mediaStream.getVideoTracks()[0];
-    const { width, height } = videoTrack.getSettings();
-
-    // Use a fallback resolution if settings are unavailable
-    canvas.width = width || 1280;
-    canvas.height = height || 720;
+    // Set canvas dimensions to the native video resolution (or the requested 1280x960 fallback)
+    canvas.width = videoWidth || 1280;
+    canvas.height = videoHeight || 960; 
     
     const context = canvas.getContext('2d');
     
-    // Draw the current video frame onto the canvas
+    // Draw the current video frame onto the canvas without distortion
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     // Convert the canvas content to a JPEG base64 string
     const base64Data = canvas.toDataURL('image/jpeg', 0.9); // Quality set to 90%
     
     return base64Data;
+}
+
+// --- NEW HELPER FOR HIGH-RESOLUTION CAPTURE ---
+function createHighResolutionCanvasFrame(videoElement) {
+    // Use video.videoWidth and video.videoHeight for native resolution
+    const videoWidth = videoElement.videoWidth;
+    const videoHeight = videoElement.videoHeight;
+    
+    if (videoWidth === 0 || videoHeight === 0) {
+        console.warn("Video dimensions are zero, unable to create high-res frame.");
+        return null;
+    }
+
+    const highResCanvas = document.createElement('canvas');
+    highResCanvas.width = videoWidth;
+    highResCanvas.height = videoHeight;
+    const ctx = highResCanvas.getContext('2d');
+    
+    // Draw the current video frame onto the canvas at native resolution
+    ctx.drawImage(videoElement, 0, 0, videoWidth, videoHeight);
+    
+    return highResCanvas;
 }
 
 function drawBoundingBox(box, score) {
@@ -495,40 +530,59 @@ function drawBoundingBox(box, score) {
     // Unpack normalized detection box: [ymin, xmin, ymax, xmax]
     let [ymin, xmin, ymax, xmax] = box;
 
-    // --- TRANSFORM CORRECTIONS ---
-    // 1. Account for video rotation (180° flip)
-    //    -> Flip both horizontally and vertically
-    ymin = 1 - ymax;
-    ymax = 1 - (box[0]);
-    xmin = 1 - xmax;
-    xmax = 1 - (box[1]);
+    // --- TRANSFORM CORRECTIONS (for rotated video streams) ---
+    // Flip both horizontally and vertically
+    const flipped_ymin = 1 - ymax;
+    const flipped_ymax = 1 - box[0];
+    const flipped_xmin = 1 - xmax;
+    const flipped_xmax = 1 - box[1];
 
-    // 2. Compute coordinates in display pixels
-    const x = xmin * canvas.width;
-    const y = ymin * canvas.height;
-    const width = (xmax - xmin) * canvas.width;
-    const height = (ymax - ymin) * canvas.height;
+    // Compute coordinates in display pixels
+    const x = flipped_xmin * canvas.width;
+    const y = flipped_ymin * canvas.height;
+    const width = (flipped_xmax - flipped_xmin) * canvas.width;
+    const height = (flipped_ymax - flipped_ymin) * canvas.height;
 
     // Draw bounding box
     ctx.save();
-    ctx.strokeStyle = 'lime';
+    // ✅ FIX 1: Change line color to white
+    ctx.strokeStyle = 'white'; 
     ctx.lineWidth = 3;
     ctx.strokeRect(x, y, width, height);
 
-    // Label
-    ctx.font = '16px Roboto';
-    ctx.fillStyle = 'lime';
-    ctx.fillText(`Optic Disc (${(score * 100).toFixed(1)}%)`, x + 5, y + 20);
+    // ✅ FIX 2: Draw Label Above the Box (Black Text with White Background)
+    const labelText = `Optic Disc (${(score * 100).toFixed(1)}%)`;
+    ctx.font = '18px Roboto'; // Slightly larger font for better visibility
+    const textMetrics = ctx.measureText(labelText);
+    const textWidth = textMetrics.width;
+    const textHeight = 22; // Approximate height for the background box
+
+    // Calculate background box position (just above the bounding box)
+    const labelX = x;
+    // Position text box 5px above the bounding box top edge (y)
+    const labelY = y - textHeight - 5; 
+
+    // Draw background box (white)
+    ctx.fillStyle = 'white';
+    // Add 10px padding around the text
+    ctx.fillRect(labelX, labelY, textWidth + 10, textHeight); 
+
+    // Draw text (black)
+    ctx.fillStyle = 'black';
+    // Position text inside the white padding box
+    ctx.fillText(labelText, labelX + 5, labelY + textHeight - 5); 
+    
     ctx.restore();
 }
 
 
 function cropFrameByBox(sourceCanvas, box) {
-    // box = [ymin, xmin, ymax, xmax] (normalized 0–1)
+    // box = [ymin, xmin, ymax, xmax] (normalized 0–1, potentially padded)
     const [ymin, xmin, ymax, xmax] = box;
     const srcWidth = sourceCanvas.width;
     const srcHeight = sourceCanvas.height;
 
+    // Calculate pixel coordinates from normalized box and source canvas dimensions
     const x = xmin * srcWidth;
     const y = ymin * srcHeight;
     const width = (xmax - xmin) * srcWidth;
@@ -631,6 +685,7 @@ async function detectObjects() {
         return;
     }
 
+    // Canvas for model input (low resolution for speed)
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 480;
@@ -649,15 +704,47 @@ async function detectObjects() {
         const boxes = (await predictions[1].array())[0][0];
 
         if (scores > detectionThreshold) {
-            drawBoundingBox(boxes, scores);
+            drawBoundingBox(boxes, scores); // Draws the visualization
 
             const currentTime = Date.now();
-            // ✅ KEY CHANGE: Only save an image if auto-capture is explicitly activated
+            // Only save an image if auto-capture is explicitly activated
             if (isAutoCaptureActive && (currentTime - lastActionTime > detectionDelay)) {
                 lastActionTime = currentTime;
                 console.log('Auto-capturing object with score:', scores);
 
-                const croppedBase64 = cropFrameByBox(canvas, boxes);
+                // --- START PADDING LOGIC (10% DILATION) ---
+                let [ymin, xmin, ymax, xmax] = boxes;
+                const paddingRatio = 0.10; // 10% total padding
+                
+                // Calculate padding based on the box dimensions
+                const yRange = ymax - ymin;
+                const xRange = xmax - xmin;
+                
+                // For a 10% total padding (5% on each side)
+                const yPadding = (yRange * paddingRatio) / 2;
+                const xPadding = (xRange * paddingRatio) / 2;
+                
+                // Apply padding and ensure coordinates remain within [0, 1]
+                const padded_ymin = Math.max(0, ymin - yPadding);
+                const padded_ymax = Math.min(1, ymax + yPadding);
+                const padded_xmin = Math.max(0, xmin - xPadding);
+                const padded_xmax = Math.min(1, xmax + xPadding);
+                
+                const paddedBox = [padded_ymin, padded_xmin, padded_ymax, padded_xmax];
+                // --- END PADDING LOGIC ---
+
+                const video = document.getElementById('cameraFeed');
+                // Create a canvas with the full, native video resolution
+                const highResCanvas = createHighResolutionCanvasFrame(video);
+                
+                if (!highResCanvas) {
+                    tf.engine().endScope(); 
+                    window.requestAnimationFrame(detectObjects);
+                    return;
+                }
+
+                // Use the paddedBox for cropping the high-resolution image
+                const croppedBase64 = cropFrameByBox(highResCanvas, paddedBox); 
 
                 const type = 'AUTO';
                 let count;
@@ -987,86 +1074,266 @@ function deleteImageFromLightbox() {
     }
 }
 
-
-// --- Page 4: Analysis Logic (MODIFIED to store results) ---
+// --- Page 4: Analysis Logic (UPDATED to use real classification) ---
 
 function renderAnalysisPage() {
-    const leftImages = capturedImages.filter(img => img.eye === 'LEFT');
-    const rightImages = capturedImages.filter(img => img.eye === 'RIGHT');
-
-    const getRandomSubset = (arr, count) => {
-        const shuffled = [...arr].sort(() => 0.5 - Math.random());
-        return shuffled.slice(0, count);
-    };
-
-    const leftSubset = getRandomSubset(leftImages, 5);
-    const rightSubset = getRandomSubset(rightImages, 5);
-
     const gridLeft = document.getElementById('analysis-grid-left');
     const gridRight = document.getElementById('analysis-grid-right');
+    const resultLeft = document.getElementById('analysis-result-left');
+    const resultRight = document.getElementById('analysis-result-right');
+    
+    // Clear previous content
     gridLeft.innerHTML = '';
     gridRight.innerHTML = '';
 
-    leftSubset.forEach(img => {
-        const imageEl = document.createElement('img');
-        imageEl.src = img.base64;
-        gridLeft.appendChild(imageEl);
-    });
-    
-    rightSubset.forEach(img => {
-        const imageEl = document.createElement('img');
-        imageEl.src = img.base64;
-        gridRight.appendChild(imageEl);
-    });
+    const allLeftImages = capturedImages.filter(img => img.eye === 'LEFT');
+    const allRightImages = capturedImages.filter(img => img.eye === 'RIGHT');
 
-    const appendImageWithLabel = (grid, img) => {
+    // FIX: Only render the top 5 images used for analysis
+    const imagesToRenderLeft = findTopKValues(allLeftImages, TOP_K_IMAGES);
+    const imagesToRenderRight = findTopKValues(allRightImages, TOP_K_IMAGES);
+
+    /**
+     * Creates a styled image wrapper with the classification score label.
+     */
+    const createAnalysisImageWrapper = (img) => {
         const wrapper = document.createElement('div');
-        wrapper.className = 'analysis-image-wrapper'; // Need a wrapper for label positioning
+        wrapper.className = 'analysis-image-wrapper top-k-image';
         
         const imageEl = document.createElement('img');
         imageEl.src = img.base64;
         imageEl.alt = `${img.eye} Image ${img.name}`;
         
-        // NEW: Image label element
-        const label = document.createElement('div');
-        label.className = 'image-label-thumbnail';
-        label.textContent = img.name;
+        const scoreLabel = document.createElement('div');
+        scoreLabel.className = 'analysis-score-label';
+
+        const classification = img.classification;
+        if (classification && classification.class && classification.class !== 'error') {
+            // Display primary model's class and confidence (e.g., ODE 95%)
+            scoreLabel.textContent = `${classification.class} ${
+                (classification.probability * 100).toFixed(0)
+            }%`;
+            scoreLabel.classList.add(`score-${classification.class.toLowerCase().replace('_', '-')}`);
+        } else {
+            // Display odScore or filename if classification hasn't run or failed
+            const displayScore = (img.odScore && img.odScore > 0) ? `OD: ${(img.odScore * 100).toFixed(1)}%` : img.name;
+            scoreLabel.textContent = displayScore;
+            scoreLabel.classList.add('score-unanalyzed');
+        }
         
         wrapper.appendChild(imageEl);
-        wrapper.appendChild(label);
-        grid.appendChild(wrapper);
+        wrapper.appendChild(scoreLabel);
+        return wrapper;
+    };
+    
+    // Render ONLY the calculated top 5 images
+    imagesToRenderLeft.forEach(img => gridLeft.appendChild(createAnalysisImageWrapper(img)));
+    imagesToRenderRight.forEach(img => gridRight.appendChild(createAnalysisImageWrapper(img)));
+    
+    // Update the main result summaries and apply visual styling
+    const updateResultDisplay = (el, resultText, resultClass) => {
+        el.textContent = resultText;
+        el.classList.remove('result-success', 'result-warning');
+        
+        // Error fix: Only apply class if a valid class string is present
+        if (resultClass) {
+            el.classList.add(resultClass);
+        }
+    };
+    
+    // Use the class stored in analysisResults to apply the correct theme
+    updateResultDisplay(resultLeft, analysisResults.left, analysisResults.leftClass);
+    updateResultDisplay(resultRight, analysisResults.right, analysisResults.rightClass);
+}
+
+/**
+ * Selects the top K elements (images) with the highest OD score (stored in the 'odScore' property).
+ * @param {Array<Object>} elements - Array of captured image objects.
+ * @param {number} k - The number of top elements to return.
+ * @returns {Array<Object>} - The top K elements.
+ */
+/**
+ * Selects the top K elements (images) with the highest OD score (stored in the 'odScore' property).
+ */
+function findTopKValues(elements, k) {
+    if (elements.length === 0) return [];
+
+    // Sort by odScore in descending order (highest score first)
+    const sorted = [...elements].sort((a, b) => (b.odScore || 0) - (a.odScore || 0));
+
+    // Return the top K elements
+    return sorted.slice(0, k);
+}
+
+
+async function runAnalysis() {
+    const analysisBtn = document.getElementById('runAnalysisBtn');
+    analysisBtn.disabled = true;
+    analysisBtn.textContent = 'Analyzing Top 5...';
+    
+    if (!classifierModel || !pretrainedClassifierModel) {
+        alertUser("Classification models are still loading or failed to load. Please wait.", true);
+        analysisBtn.disabled = false;
+        analysisBtn.textContent = 'Run Analysis';
+        return;
+    }
+
+    const allLeftImages = capturedImages.filter(img => img.eye === 'LEFT');
+    const allRightImages = capturedImages.filter(img => img.eye === 'RIGHT');
+
+    // Filter to only the top K images for classification
+    const imagesToClassifyLeft = findTopKValues(allLeftImages, TOP_K_IMAGES);
+    const imagesToClassifyRight = findTopKValues(allRightImages, TOP_K_IMAGES);
+
+    /**
+     * Runs classification for the top K images of one eye and determines a majority class.
+     */
+    const analyzeEye = async (images) => {
+        if (images.length === 0) return { text: 'NO IMAGES CAPTURED.', class: 'result-warning' };
+        
+        const predictions = []; // Primary model predictions
+        
+        for (const img of images) {
+            const imageElement = await getImageDataFromBase64(img.base64);
+            if (!imageElement) continue;
+
+            const prediction = await predict(imageElement, classifierModel);
+            predictions.push(prediction);
+
+            // Mark and store classification results on the image object
+            img.classification = { 
+                result: `${prediction.class} (${(prediction.probability * 100).toFixed(0)}%)`,
+                class: prediction.class,
+                isTopK: true
+            };
+        }
+        
+        // --- STEP 2: Determine Final Result and Text ---
+        const majorityClass = getMajorityClass(predictions);
+        let resultText = '';
+        let resultClass = 'result-warning'; // Default to amber/warning
+        const totalVotes = predictions.filter(p => p.class !== 'error').length;
+        const odeVotes = predictions.filter(p => p.class === 'ODE').length;
+        
+        if (majorityClass.class === 'N/A') {
+            resultText = 'Analysis failed: No valid images found.';
+        } else if (majorityClass.class === 'not_ODE') {
+            const notOdeVotes = totalVotes - odeVotes;
+            resultText = `No Optic Disc Edema detected. Vote ratio: ${notOdeVotes}/${totalVotes}`;
+            resultClass = 'result-success'; // Deep green/success
+        } else if (majorityClass.class === 'ODE') {
+            resultText = `Optic Disc Edema suspected. Further review recommended. Vote ratio: ${odeVotes}/${totalVotes}`;
+        } else if (majorityClass.class === 'INCONCLUSIVE') {
+            resultText = `Non-conclusive result. Please repeat image capture. Vote ratio: ${odeVotes}/${totalVotes}`;
+        }
+
+        return { text: resultText, class: resultClass };
     };
 
-    gridLeft.innerHTML = '';
-    gridRight.innerHTML = '';
+    alertUser("Starting classification of top 5 images...");
+    
+    // Run analysis for both eyes
+    const [leftResult, rightResult] = await Promise.all([
+        analyzeEye(imagesToClassifyLeft),
+        analyzeEye(imagesToClassifyRight)
+    ]);
 
-    leftSubset.forEach(img => appendImageWithLabel(gridLeft, img));
-    rightSubset.forEach(img => appendImageWithLabel(gridRight, img));
-    
-    // Show current stored results (if run previously), otherwise hide
-    document.getElementById('analysis-result-left').textContent = analysisResults.left;
-    document.getElementById('analysis-result-right').textContent = analysisResults.right;
-    
-    document.getElementById('analysis-result-left').style.display = (analysisResults.left !== 'Not yet run.' ? 'block' : 'none');
-    document.getElementById('analysis-result-right').style.display = (analysisResults.right !== 'Not yet run.' ? 'block' : 'none');
+    // Store the results and their classes
+    analysisResults.left = leftResult.text;
+    analysisResults.right = rightResult.text;
+    analysisResults.leftClass = leftResult.class;
+    analysisResults.rightClass = rightResult.class;
+
+    // Refresh the UI display
+    renderAnalysisPage(); 
+
+    analysisBtn.disabled = false;
+    analysisBtn.textContent = 'Run Analysis';
+    alertUser("Analysis complete.");
 }
 
-function runAnalysis() {
-    const resultLeft = document.getElementById('analysis-result-left');
-    const resultRight = document.getElementById('analysis-result-right');
+// NEW HELPER: Get the image data required by TF from the Base64 string
+// Returns a Promise that resolves to an HTMLCanvasElement suitable for tf.browser.fromPixels
+function getImageDataFromBase64(base64) {
+    const img = new Image();
+    img.src = base64;
     
-    // MODIFICATION: Store and display mock results
-    analysisResults.left = 'LEFT EYE RESULT: NO ODE DETECTED.';
-    analysisResults.right = 'RIGHT EYE RESULT: SUSPECTED ODE. FURTHER REVIEW RECOMMENDED.';
-    
-    resultLeft.textContent = analysisResults.left;
-    resultRight.textContent = analysisResults.right;
-    
-    resultLeft.style.display = 'block';
-    resultRight.style.display = 'block';
-    
-    alertUser("Analysis simulated.");
+    return new Promise((resolve) => {
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            // Use the full resolution of the captured image
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            resolve(canvas);
+        };
+        img.onerror = () => resolve(null); // Resolve to null on error
+    });
 }
+
+// preprocess the image for the classification, classify the image and uses the threshold set to obtain the result
+// (Based on original logic for single sigmoid output)
+async function predict(imageElement, model) {
+    if (!imageElement) return { class: 'not_ODE', probability: 0, rawScore: 0 };
+    
+    tf.engine().startScope();
+    try {
+        const tensor = tf.browser.fromPixels(imageElement);
+        const normalizedTensor = tensor.div(tf.scalar(255));
+        // Resize to 224x224 (MobileNet/Classifier standard input size)
+        const resized = tf.image.resizeBilinear(normalizedTensor, [224, 224]);
+        const expanded = resized.expandDims(0);
+        
+        const prediction = await model.predict(expanded).data();
+        
+        tf.dispose([tensor, normalizedTensor, resized, expanded]);
+        
+        // Assuming single sigmoid output where value > threshold is 'not_ODE'
+        const nonODEProbability = parseFloat(prediction[0]);
+        
+        if (nonODEProbability > CLASSIFICATION_THRESHOLD) {
+            return { class: 'not_ODE', probability: nonODEProbability, rawScore: nonODEProbability };
+        } else {
+            // The probability is inverted for the 'ODE' class
+            return { class: 'ODE', probability: 1 - nonODEProbability, rawScore: nonODEProbability };
+        }
+    } catch (e) {
+        console.error("Prediction error:", e);
+        tf.engine().endScope();
+        return { class: 'error', probability: 0, rawScore: 0 };
+    } finally {
+        tf.engine().endScope();
+    }
+}
+
+// Takes the majority class based on vote count.
+function getMajorityClass(predictions) {
+    const counts = { 'ODE': 0, 'not_ODE': 0 };
+    
+    // Filter out images that failed to load or classify
+    const validPredictions = predictions.filter(p => p.class !== 'error');
+    if (validPredictions.length === 0) return { class: 'N/A', probability: 0, count: 0 };
+
+    for (const prediction of validPredictions) {
+        counts[prediction.class] += 1;
+    }
+    
+    const ODECount = counts['ODE'];
+    const notODECount = counts['not_ODE'];
+    const total = ODECount + notODECount;
+
+    // Determine majority class and probability (ratio of votes)
+    if (ODECount === notODECount) {
+        return { class: 'INCONCLUSIVE', probability: 0.5, count: total };
+    } else if (ODECount > notODECount) {
+        return { class: 'ODE', probability: ODECount / total, count: total };
+    } else {
+        return { class: 'not_ODE', probability: notODECount / total, count: total };
+    }
+}
+
 
 
 // --- Page 5: Questionnaire Logic (MODIFIED to capture answers) ---
@@ -1150,32 +1417,50 @@ function renderOverviewPage() {
     renderOverviewCarousel('overview-carousel-left', leftImages);
     renderOverviewCarousel('overview-carousel-right', rightImages);
 
-    // 3. Analysis Results
-    document.getElementById('overview-analysis-left').textContent = analysisResults.left;
-    document.getElementById('overview-analysis-right').textContent = analysisResults.right;
+    // 3. Analysis Results (MODIFIED for thematic styling)
+    const resultLeftEl = document.getElementById('overview-analysis-left');
+    const resultRightEl = document.getElementById('overview-analysis-right');
+
+    resultLeftEl.textContent = analysisResults.left;
+    resultRightEl.textContent = analysisResults.right;
+    
+    // NEW LOGIC: Apply thematic classes for consistent styling
+    resultLeftEl.classList.remove('result-success', 'result-warning');
+    if (analysisResults.leftClass) {
+        resultLeftEl.classList.add(analysisResults.leftClass);
+    }
+    
+    resultRightEl.classList.remove('result-success', 'result-warning');
+    if (analysisResults.rightClass) {
+        resultRightEl.classList.add(analysisResults.rightClass);
+    }
 
     // 4. TLX Review and Comments
     const tlxContainer = document.getElementById('overview-tlx-results');
     tlxContainer.innerHTML = '';
     
+    // Note: Assuming 'tlxAnswers' is a globally defined object
     if (Object.keys(tlxAnswers).length === 0) {
             // Should not happen if navigation is correct, but re-capture if necessary
-            captureTLXAnswers(); 
+            // captureTLXAnswers(); // Uncomment if you want to force capture here
+             tlxContainer.innerHTML = '<p style="margin: auto; font-size: 0.9em; color: #666;">NASA TLX answers not found.</p>';
+    } else {
+        // Note: Assuming 'TLX_DIMENSIONS' is a globally defined array
+        TLX_DIMENSIONS.forEach((dim, index) => {
+            const key = `q${index + 1}_${dim.name.replace(/\s/g, '')}`;
+            // Checkmark if the answer is present in tlxAnswers
+            const isAnswered = tlxAnswers.hasOwnProperty(key); 
+            
+            const item = document.createElement('div');
+            item.className = 'overview-tlx-item';
+            item.innerHTML = `
+                <span class="tlx-question-text">${dim.prompt}</span>
+                <span class="tlx-status-check">${isAnswered ? '&#x2713;' : ''}</span>
+            `;
+            tlxContainer.appendChild(item);
+        });
     }
 
-    TLX_DIMENSIONS.forEach((dim, index) => {
-        const key = `q${index + 1}_${dim.name.replace(/\s/g, '')}`;
-        // Checkmark if the answer is present in tlxAnswers
-        const isAnswered = tlxAnswers.hasOwnProperty(key); 
-        
-        const item = document.createElement('div');
-        item.className = 'overview-tlx-item';
-        item.innerHTML = `
-            <span class="tlx-question-text">${dim.prompt}</span>
-            <span class="tlx-status-check">${isAnswered ? '&#x2713;' : ''}</span>
-        `;
-        tlxContainer.appendChild(item);
-    });
 
     document.getElementById('overviewComments').textContent = subjectInfo.notes || 'No comments provided.';
 }
@@ -1325,8 +1610,12 @@ function setupEventListeners() {
 
     // Analysis Page (Step 4)
     document.getElementById('runAnalysisBtn')?.addEventListener('click', runAnalysis);
-    document.getElementById('backFromAnalysisBtn')?.addEventListener('click', () => navigateTo(3));
-    document.getElementById('toQuestionnaireBtn')?.addEventListener('click', () => navigateTo(5));
+    document.getElementById('backToReviewBtn')?.addEventListener('click', () => {
+        navigateTo(3); // Navigate to Review (Page 3)
+    });
+   document.getElementById('toTlxBtn')?.addEventListener('click', () => {
+        navigateTo(5); // Navigate to TLX (Page 5)
+    });
 
     // Questionnaire Page (Step 5)
     document.getElementById('backFromQuestionnaireBtn')?.addEventListener('click', () => navigateTo(4));

@@ -8,6 +8,11 @@
     --text-dark: #343a40;
     --background-light: #f8f9fa;
     --border-color: #dee2e6;
+    /* NEW: Custom Colors for Analysis Results */
+    --analysis-success-dark: #0f6630; /* Deep Green */
+    --analysis-success-light: #e6f5ec; /* Light Green Background */
+    --analysis-warning-dark: #cc8400; /* Dark Amber */
+    --analysis-warning-light: #fff8e6; /* Light Amber Background */
 }
 
 body {
@@ -811,75 +816,113 @@ label[for="subjectId"] {
 /* ----------------------------------
     PAGE 4: Analysis (MODIFIED)
     ---------------------------------- */
-#page-analysis {
-    justify-content: flex-start;
-    padding-bottom: 90px;
-}
-.analysis-subtitle {
-    font-size: 0.9em;
-    color: var(--secondary-color);
-    margin: -15px 0 20px 0;
-}
-.analysis-section {
-    width: 95%;
-    margin-bottom: 20px;
-}
-.analysis-section h3 {
-    text-align: left;
-    margin-bottom: 10px;
-    border-bottom: 2px solid var(--primary-color);
-    padding-bottom: 5px;
+/* --- Analysis Page Styling (Page 4) --- */
+
+.analysis-container {
+    display: flex;
+    justify-content: space-around;
+    gap: 20px;
+    margin-top: 20px;
 }
 
-.analysis-image-wrapper {
-    position: relative;
-    width: 120px; /* Match the size of the image */
-    height: 120px;
-    flex-shrink: 0;
-    border-radius: 4px;
-    overflow: hidden;
+.analysis-eye-block {
+    flex: 1;
+    min-width: 45%;
 }
 
+.analysis-result-summary {
+    font-size: 1.1em;
+    font-weight: 700;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 8px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--text-dark);
+    /* Default state before analysis runs */
+    background-color: var(--background-light); 
+    border-left: 10px solid var(--secondary-color);
+}
+
+/* Theme for 'No Optic Disc Edema detected' (Success) */
+.analysis-result-summary.result-success {
+    border: 1px solid var(--analysis-success-dark);
+    border-left: 10px solid var(--analysis-success-dark);
+    background-color: var(--analysis-success-light);
+    color: var(--analysis-success-dark);
+}
+
+/* Theme for 'Optic Disc Edema suspected' or 'Non-conclusive' (Warning) */
+.analysis-result-summary.result-warning {
+    border: 1px solid var(--analysis-warning-dark);
+    border-left: 10px solid var(--analysis-warning-dark);
+    background-color: var(--analysis-warning-light);
+    color: var(--analysis-warning-dark);
+}
+
+/* Styling for the Top 5 images (since all displayed are top-K) */
+.analysis-image-wrapper.top-k-image {
+    border: 3px solid var(--border-color); /* Just a clean border */
+    box-shadow: none;
+}
+
+
+/* Image Grid Styling */
 .analysis-grid {
-    display: flex; /* MODIFICATION 3: Use flex for carousel */
-    overflow-x: auto; /* MODIFICATION 3: Allow horizontal scrolling */
+    display: grid;
+    /* Create a responsive grid of thumbnails */
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
     gap: 10px;
     padding: 10px;
-    height: 140px; /* MODIFICATION 3: Fixed height for the carousel row */
-    background-color: var(--background-light);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    -ms-overflow-style: none; /* Hide scrollbar for IE/Edge */
-    scrollbar-width: none; /* Hide scrollbar for Firefox */
-    white-space: nowrap; /* MODIFICATION 3: Prevent wrapping */
-    align-items: center; /* Center items vertically if they don't fill height */
+    max-height: 300px; /* Limit height to prevent page overflow */
+    overflow-y: auto;
 }
-.analysis-grid::-webkit-scrollbar {
-    display: none; /* Hide scrollbar for Chrome/Safari/Opera */
+
+/* Image Wrapper for Positioning the Label */
+.analysis-image-wrapper {
+    position: relative;
+    overflow: hidden;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    background: #fff;
+    aspect-ratio: 1 / 1; /* Keep images square */
 }
-.analysis-grid img {
-    width: 100%; /* Fill the wrapper */
+
+.analysis-image-wrapper img {
+    width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 4px;
-    /* Removed flex-shrink: 0; as it is now on the wrapper */
+    display: block;
 }
-.analysis-result {
-    font-weight: 700;
-    padding: 10px;
-    border: 2px solid var(--success-color); 
-    color: #155724; 
-    background-color: #d4edda; 
-    border-radius: 4px;
+
+/* Classification Score Overlay */
+.analysis-score-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
     width: 100%;
-    margin-top: 15px; 
-    text-align: left;
-    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    font-size: 0.8em;
+    font-weight: 500;
+    padding: 4px 2px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.wide-btn {
-    width: 95%;
-    margin-top: 10px;
-    padding: 15px;
-    font-size: 1.2em;
+
+/* Color coding for individual thumbnail results */
+.analysis-score-label.score-ode {
+    background: var(--danger-color); /* Red for ODE */
+}
+.analysis-score-label.score-not-ode {
+    background: var(--success-color); /* Green for not_ODE */
+}
+.analysis-score-label.score-unanalyzed {
+    background: var(--secondary-color); /* Gray if not run yet */
 }
 
 /* ----------------------------------

@@ -161,28 +161,34 @@
    </section>
 
    <section id="page-analysis" class="page" data-page="4">
-    <h2>Image Analysis</h2>
-    <p class="analysis-subtitle">Top 5 images from each eye selected for analysis.</p>
+        <h2>Analysis & Classification</h2>
 
-    <div class="analysis-section">
-        <h3>LEFT EYE IMAGES</h3>
-        <div id="analysis-grid-left" class="analysis-grid"></div>
-        <div id="analysis-result-left" class="analysis-result" style="display: none;"></div>
-    </div>
-    
-    <div class="analysis-section">
-        <h3>RIGHT EYE IMAGES</h3>
-        <div id="analysis-grid-right" class="analysis-grid"></div>
-        <div id="analysis-result-right" class="analysis-result" style="display: none;"></div>
-    </div>
-    
-    <button id="runAnalysisBtn" class="primary-btn wide-btn">RUN ANALYSIS</button>
+        <button id="runAnalysisBtn" class="primary-btn run-analysis-btn">Run Analysis</button>
 
-    <div class="nav-controls fixed-bottom-controls"> 
-     <button id="backFromAnalysisBtn" class="secondary-btn">BACK</button>
-     <button id="toQuestionnaireBtn" class="primary-btn">TO QUESTIONNAIRE</button>
+        <div class="analysis-container">
+            <div class="analysis-eye-block">
+                <h3>Left Eye (OS)</h3>
+                <p id="analysis-result-left" class="analysis-result-summary">Awaiting classification...</p>
+                
+                <div id="analysis-grid-left" class="analysis-grid">
+                    </div>
+            </div>
+
+            <div class="analysis-eye-block">
+                <h3>Right Eye (OD)</h3>
+                <p id="analysis-result-right" class="analysis-result-summary">Awaiting classification...</p>
+                
+                <div id="analysis-grid-right" class="analysis-grid">
+                    </div>
+            </div>
+        </div>
+
+    <div class="nav-controls fixed-bottom-controls">
+        <button id="backToReviewBtn" class="secondary-btn">BACK</button> 
+        <button id="toTlxBtn" class="primary-btn">TO TLX</button>
     </div>
-   </section>
+
+    </section>
 
    <section id="page-questionnaire" class="page" data-page="5">
     <h2>NASA TLX Questionnaire</h2>
@@ -222,8 +228,10 @@
         
         <div class="overview-section">
             <h3>ANALYSIS RESULTS</h3>
-            <div id="overview-analysis-left" class="analysis-result"></div>
-            <div id="overview-analysis-right" class="analysis-result"></div>
+            <div class="analysis-container overview-results-container">
+                <p id="overview-analysis-left" class="analysis-result-summary">Awaiting classification...</p>
+                <p id="overview-analysis-right" class="analysis-result-summary">Awaiting classification...</p>
+            </div>
         </div>
 
         <div class="overview-section">

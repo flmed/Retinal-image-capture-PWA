@@ -22,8 +22,13 @@ const pretrainedClassifierModelUrl = 'models/mobileNet/model.json';
 // NEW: DOM Elements for Model Status on Info Page
 let objDetStatusIcon;
 let objDetStatusText;
+let objDetProgressBar;
 let classifierStatusIcon;
 let classifierStatusText;
+let classifierProgressBar;
+// NEW: Combined Status Elements
+let combinedStatusIcon; // The new large spinning disc
+let overallStatusText; // The new "Loading Models..." text
 
 // NEW: Model Status Constants
 const STATUS = {
@@ -38,6 +43,7 @@ const detectionDelay = 300; // Minimum ms between saved frames
 const detectionThreshold = 0.8; // Customize if needed
 let detectionActive = false;
 let isOdDetectionVisible = false;
+let detectionFrameId = null; // To hold the requestAnimationFrame ID
 
 // NEW: Counters for automatic naming
 let manualLeftCount = 0;
@@ -128,18 +134,19 @@ function validateStep1() {
  * Grabs the necessary DOM elements for status display on the Info Page.
  */
 function getInfoPageStatusElements() {
+    // OD Model
     const objDetContainer = document.getElementById('obj-det-status');
+    objDetStatusText = objDetContainer?.querySelector('.status-text');
+    objDetProgressBar = document.getElementById('obj-det-progress');
+
+    // Classifier Model
     const classifierContainer = document.getElementById('classifier-status');
-    
-    if (objDetContainer) {
-        // Find the icon and text span within the container
-        objDetStatusIcon = objDetContainer.querySelector('.status-circle');
-        objDetStatusText = objDetContainer.querySelector('.status-text');
-    }
-    if (classifierContainer) {
-        classifierStatusIcon = classifierContainer.querySelector('.status-circle');
-        classifierStatusText = classifierContainer.querySelector('.status-text');
-    }
+    classifierStatusText = classifierContainer?.querySelector('.status-text');
+    classifierProgressBar = document.getElementById('classifier-progress');
+
+    // Combined Status Elements
+    combinedStatusIcon = document.getElementById('combined-status-icon');
+    overallStatusText = document.getElementById('overall-status-text');
 }
 
 /**
@@ -147,34 +154,6 @@ function getInfoPageStatusElements() {
  * @param {string} modelKey - 'objectDetection' or 'classifier'
  * @param {Object} status - One of the STATUS constants (RED, ORANGE, GREEN)
  */
-function updateModelStatus(modelKey, status) {
-    let icon, text;
-
-    if (modelKey === 'objectDetection') {
-        icon = objDetStatusIcon;
-        text = objDetStatusText;
-    } else if (modelKey === 'classifier') {
-        icon = classifierStatusIcon;
-        text = classifierStatusText;
-    }
-
-    if (icon && text) {
-        // Clear existing classes (like fa-spin) and set new ones
-        icon.className = 'status-circle fas';
-        if (status.icon.includes('fa-spin')) {
-            icon.classList.add('fa-circle-notch', 'fa-spin');
-        } else {
-            icon.classList.add(status.icon);
-        }
-        
-        // Remove old color classes and add the new one
-        icon.classList.remove('red', 'orange', 'green');
-        icon.classList.add(status.color);
-        
-        // Update text
-        text.textContent = status.text;
-    }
-}
 
 function navigateTo(step) {
     if (currentPage === 1 && step > 1 && !validateStep1()) {
@@ -183,11 +162,32 @@ function navigateTo(step) {
     
     if (currentPage === 2 && step !== 2) {
         stopCamera();
-        // REMOVED: stopAutoCapture(); which caused the error
 
-        // ADDED: Explicitly turn off detection states when leaving the page
+        // Turn off detection states
         isOdDetectionVisible = false;
         isAutoCaptureActive = false;
+
+        // --- NEW: Reset UI elements for OD Detection ---
+        const odToggle = document.getElementById('odDetectionToggle');
+        const autoBtn = document.getElementById('autoCaptureToggleBtn');
+        const boxCanvas = document.getElementById('boundingBoxCanvas');
+
+        if (odToggle) {
+            odToggle.checked = false; // Uncheck the toggle
+        }
+
+        if (autoBtn) {
+            // Reset button to its initial "OD OFF" state
+            autoBtn.disabled = true;
+            autoBtn.classList.remove('ready', 'active');
+            autoBtn.textContent = 'Object Detection OFF';
+        }
+        
+        if (boxCanvas) {
+            // Explicitly clear any lingering bounding box
+            const ctx = boxCanvas.getContext('2d');
+            ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
+        }
     }
 
     // MODIFICATION: Add new page 6 to the list of pages to deactivate
@@ -234,22 +234,49 @@ function navigateTo(step) {
 }
 
 async function loadModels() {
-    // 1. Initial State: Set both to ORANGE (Loading)
-    updateModelStatus('objectDetection', STATUS.ORANGE);
-    updateModelStatus('classifier', STATUS.ORANGE);
+    // 1. Initial State: Set text for individual status lines (NO ICONS)
+    if (objDetStatusText) objDetStatusText.textContent = STATUS.ORANGE.text;
+    if (classifierStatusText) classifierStatusText.textContent = STATUS.ORANGE.text;
+    
+    // Initialize combined status
+    if (overallStatusText) {
+        overallStatusText.textContent = 'Loading Models...';
+    }
     
     // Load models in parallel to speed up startup time
     const results = await Promise.allSettled([
         // Auto Capture Object Detection Model (tf.loadGraphModel)
         (async () => {
-            const model = await tf.loadGraphModel(objectDetectionModelUrl);
+            const model = await tf.loadGraphModel(
+                objectDetectionModelUrl,
+                {
+                    onProgress: (fraction) => {
+                        const percent = Math.floor(fraction * 100);
+                        objDetStatusText.textContent = `Loading... ${percent}%`; 
+                        if (objDetProgressBar) {
+                            objDetProgressBar.style.width = `${percent}%`;
+                        }
+                    }
+                }
+            );
             objectDetectionModel = model;
             return { modelKey: 'objectDetection', model };
         })(),
         
         // Optic Disc Edema Classification Model (tf.loadLayersModel)
         (async () => {
-            const model = await tf.loadLayersModel(classifierModelUrl);
+            const model = await tf.loadLayersModel(
+                classifierModelUrl,
+                {
+                    onProgress: (fraction) => {
+                        const percent = Math.floor(fraction * 100);
+                        classifierStatusText.textContent = `Loading... ${percent}%`; 
+                        if (classifierProgressBar) {
+                            classifierProgressBar.style.width = `${percent}%`;
+                        }
+                    }
+                }
+            );
             classifierModel = model;
             return { modelKey: 'classifier', model };
         })(),
@@ -258,17 +285,41 @@ async function loadModels() {
         tf.loadLayersModel(pretrainedClassifierModelUrl) 
     ]);
 
+    // Track if all CORE models loaded for combined status
+    let allCoreModelsLoaded = true;
+
     // 2. Update status based on results
     results.forEach(result => {
         const modelKey = result.value ? result.value.modelKey : null;
+        let currentTextElement;
+
+        // Identify which text element to update for the individual model
+        if (modelKey === 'objectDetection') {
+            currentTextElement = objDetStatusText;
+        } else if (modelKey === 'classifier') {
+            currentTextElement = classifierStatusText;
+        }
 
         if (modelKey) {
              if (result.status === 'fulfilled') {
                 console.log(`${modelKey} model loaded successfully.`);
-                updateModelStatus(modelKey, STATUS.GREEN);
+                
+                // Update progress bar to 100%
+                if (modelKey === 'objectDetection' && objDetProgressBar) objDetProgressBar.style.width = `100%`;
+                if (modelKey === 'classifier' && classifierProgressBar) classifierProgressBar.style.width = `100%`;
+
+                // *** REPLACED updateModelStatus with direct text update ***
+                if (currentTextElement) {
+                    currentTextElement.textContent = STATUS.GREEN.text;
+                }
             } else {
                 console.error(`Error loading ${modelKey} model:`, result.reason);
-                updateModelStatus(modelKey, STATUS.RED);
+                
+                // *** REPLACED updateModelStatus with direct text update ***
+                if (currentTextElement) {
+                    currentTextElement.textContent = STATUS.RED.text;
+                }
+                allCoreModelsLoaded = false; // Flag error for combined status
             }
         } else if (result.status === 'fulfilled' && result.value) {
             pretrainedClassifierModel = result.value;
@@ -278,6 +329,27 @@ async function loadModels() {
             console.error('Error in background model loading:', result.reason);
         }
     });
+
+    // NEW: Update the SINGLE combined status icon and text
+    const icon = combinedStatusIcon;
+    const text = overallStatusText;
+    
+    if (icon && text) {
+        let finalStatus = allCoreModelsLoaded ? STATUS.GREEN : STATUS.RED;
+        let finalStatusText = allCoreModelsLoaded ? 'All Models Loaded Successfully' : 'Error Loading Core Models';
+
+        // Update text
+        text.textContent = finalStatusText;
+
+        // Update icon - clear all dynamic classes first
+        icon.className = 'fas'; 
+        
+        // Add new icon class (fa-check-circle or fa-times-circle)
+        icon.classList.add(finalStatus.icon);
+        // Remove old color classes and add the new one
+        icon.classList.remove('orange', 'red', 'green', 'fa-spin', 'fa-circle-notch');
+        icon.classList.add(finalStatus.color);
+    }
 
     // NOTE: The detection loop (detectObjects) is NOT started here. 
     // It should be started when the user navigates to the Capture page (Step 2).
@@ -674,7 +746,7 @@ async function detectObjects() {
     if (!isOdDetectionVisible || !objectDetectionModel) {
         // Keep the loop idle until the toggle is on
         if (isOdDetectionVisible) {
-            window.requestAnimationFrame(detectObjects);
+            detectionFrameId = window.requestAnimationFrame(detectObjects);
         }
         return;
     }
@@ -702,6 +774,13 @@ async function detectObjects() {
 
         const scores = (await predictions[3].array())[0][0];
         const boxes = (await predictions[1].array())[0][0];
+
+        // If the user turned off the toggle while the model was running,
+        // abort this frame immediately before drawing anything.
+        if (!isOdDetectionVisible) {
+            tf.engine().endScope();
+            return; // Exit the function now.
+        }
 
         if (scores > detectionThreshold) {
             drawBoundingBox(boxes, scores); // Draws the visualization
@@ -1671,6 +1750,11 @@ function setupEventListeners() {
     const autoBtn = document.getElementById('autoCaptureToggleBtn');
 
     if (odToggle && autoBtn) {
+        // Set initial button state on page load
+        autoBtn.disabled = true;
+        autoBtn.textContent = 'Object detection OFF';
+        autoBtn.classList.remove('ready', 'active');
+
         odToggle.addEventListener('change', () => {
             isOdDetectionVisible = odToggle.checked;
             const boxCanvas = document.getElementById('boundingBoxCanvas');
@@ -1678,30 +1762,31 @@ function setupEventListeners() {
 
             if (isOdDetectionVisible) {
                 console.log("Optic Disc detection overlay enabled.");
-                // Start the detection loop for visualization
                 window.requestAnimationFrame(detectObjects);
 
-                // Style the button to show it's ready
-                autoBtn.classList.remove('secondary-btn');
-                autoBtn.classList.add('primary-btn');
-                autoBtn.style.backgroundColor = '#28a745'; // Inactive green
+                // State 2: OD ON, Auto-Capture OFF (Dark Green)
+                autoBtn.disabled = false;
+                autoBtn.classList.add('ready');
+                autoBtn.classList.remove('active');
                 autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
             } else {
                 console.log("Optic Disc detection overlay disabled.");
-
-                // Also deactivate saving if it was on
                 isAutoCaptureActive = false;
 
-                // Clear the bounding box overlay
+                // --- FIX: Cancel the animation frame to prevent a stuck overlay ---
+                if (detectionFrameId) {
+                    cancelAnimationFrame(detectionFrameId);
+                }
+
+                // Clear the bounding box overlay (Handles requirement #4)
                 if (ctx) {
                     ctx.clearRect(0, 0, boxCanvas.width, boxCanvas.height);
                 }
 
-                // Reset the button to its default off-state
-                autoBtn.classList.remove('primary-btn', 'active');
-                autoBtn.classList.add('secondary-btn');
-                autoBtn.style.backgroundColor = '';
-                autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)';
+                // State 1: OD OFF (Dark Grey)
+                autoBtn.disabled = true;
+                autoBtn.classList.remove('ready', 'active');
+                autoBtn.textContent = 'Object Detection OFF';
             }
         });
     }

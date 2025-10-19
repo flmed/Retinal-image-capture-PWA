@@ -111,7 +111,8 @@ main {
     height: 100%;
     box-sizing: border-box;
     flex-direction: column;
-    padding: 30px;
+    /* Original: padding: 30px; */
+    padding: 15px 30px; /* Reduced top/bottom padding, keeping side padding */
     align-items: center;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -267,29 +268,88 @@ button {
     color: var(--text-dark);
 }
 
-/* Container for the model status on the Info Page */
-.model-status-info-page {
-    width: 100%;
-    max-width: 600px;
-    margin: 10px auto 20px auto;
-    padding: 15px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background-color: var(--background-light);
+
+/* 5. Style for the container holding the text and progress bar */
+.model-status-item > div {
+    display: flex;
+    flex-direction: column; /* Stack text and progress bar */
+    flex-grow: 1; 
 }
 
-.model-status-info-page p {
-    margin-top: 0;
-    margin-bottom: 10px;
+/* 1. Style the main container (which is now a single .tip-item) */
+#model-status-info-page.tip-item {
+    display: block; /* Override default tip-item flex layout */
+    padding: 5px; /* Unified padding for the single box */
+    margin-bottom: 0px;
 }
 
-/* Individual status line (icon + text) */
+/* 2. Style the individual model status items inside the box */
 .model-status-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-    font-size: 1.0em;
+}
+
+/* 3. **FIXED GAP:** Reduce the margin between items and add a separator */
+.model-status-item:not(:last-child) {
+    margin-bottom: 10px; 
+    padding-bottom: 10px; 
+    border-bottom: 1px solid var(--border-color); /* Subtle separator line */
+}
+
+/* 4. Style for the icon next to the text */
+.model-status-item .status-circle.tip-icon {
+    font-size: 1.5em; 
+    padding-right: 15px; 
+    width: auto;
+}
+
+/* Ensure the progress bar container takes full width of its new parent div */
+.model-status-item > div > .progress-bar-container {
+    margin-top: 5px; 
+    width: 100%;
+}
+
+/* REVISION: Styles for the new combined status bar at the bottom */
+#combined-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Centers the icon and text horizontally */
+    gap: 15px; /* Space between text and icon */
+    padding-top: 10px; /* Space from the progress bar above it */
+    margin-top: 10px;
+    border-top: 1px solid var(--border-color); /* Add a separator line above the combined status */
+    /* NEW: Remove unnecessary padding/margin below the status bar */
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* Style for the large, single icon (fulfilling the 'larger' requirement) */
+#combined-status-icon {
+    font-size: 1em; /* Make it significantly larger */
+    width: 1em; 
+    height: 1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Ensure it uses the status colors defined later */
+}
+
+/* Style for the overall status text */
+#overall-status-text {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+#combined-status-icon.red { color: var(--danger-color); }
+#combined-status-icon.orange { color: orange; }
+#combined-status-icon.green { color: var(--success-color); }
+
+/* Ensure the first label has correct top margin */
+#page-basic label:nth-of-type(1) { /* operatorId label */
+    /* Original: margin-top: 40px; */
+    /* Previous attempt: margin-top: 15px; */
+    margin-top: 5px; /* Aggressively reduced margin */
 }
 
 /* Style for the Font Awesome circle icon */
@@ -306,6 +366,22 @@ button {
 }
 .status-circle.green {
     color: var(--success-color); /* Uses the existing --success-color for GREEN */
+}
+
+/* 6. Progress bar container styling */
+.progress-bar-container {
+    width: 100%;
+    background-color: var(--border-color);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    margin-top: 5px; /* Space between text and progress bar */
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: var(--primary-color);
+    transition: width 0.1s ease;
 }
 
 /* New and existing input styling adjustments */
@@ -638,13 +714,27 @@ label[for="subjectId"] {
 .eye-toggle-container > #eyeToggleRight { border-radius: 0 8px 8px 0; }
 
 #autoCaptureToggleBtn {
-    background-color: #1b5e20; /* darker muted green for inactive */
+    /* Default state (OD off): dark grey, disabled */
+    background-color: #6c757d; 
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+#autoCaptureToggleBtn.ready {
+    /* OD on, auto-capture off: dark green, enabled */
+    background-color: #1b5e20;
+    cursor: pointer;
+    opacity: 1;
 }
 
 #autoCaptureToggleBtn.active {
+    /* OD on, auto-capture on: bright green */
     background-color: var(--success-color); 
     box-shadow: 0 0 10px rgba(40, 167, 69, 0.7);
+    cursor: pointer;
+    opacity: 1;
 }
+
 #carousel-container { width: 95%; margin-top: auto; }
 #carousel {
     display: flex;

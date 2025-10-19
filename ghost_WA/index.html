@@ -24,9 +24,40 @@
   </nav>
 
   <div class="page-container">
-   <section id="page-basic" class="page active" data-page="1">
-    <h2>Quick Tips</h2>
+<section id="page-basic" class="page active" data-page="1">
     
+    <label for="operatorId">Operator ID (Required):</label>
+    <input type="text" id="operatorId" placeholder="Enter Operator ID"/>
+    
+    <label for="subjectId">Subject ID (Required):</label>
+    <input type="text" id="subjectId" placeholder="Enter unique ID"/>
+    <p><strong>Model Loading Status:</strong></p>
+    
+    <div id="model-status-info-page" class="tip-item"> 
+        <div id="obj-det-status" class="model-status-item">
+            <div>
+                <span>Auto Capture Object Detection Model: <span class="status-text">Loading...</span></span>
+                <div class="progress-bar-container">
+                    <div id="obj-det-progress" class="progress-bar" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="classifier-status" class="model-status-item">
+            <div>
+                <span>Optic Disc Edema Classification Model: <span class="status-text">Loading...</span></span>
+                <div class="progress-bar-container">
+                    <div id="classifier-progress" class="progress-bar" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="combined-status-bar">
+            <span id="overall-status-text">Loading Models...</span>
+            <i id="combined-status-icon" class="fas fa-circle-notch fa-spin orange"></i>
+        </div>
+    </div>
+
     <div class="info-tips-grid">
         <div class="tip-item">
             <span class="tip-icon">📸</span>
@@ -41,31 +72,11 @@
             <p>Toggle the LEFT/RIGHT eye selection before capturing.</p>
         </div>
     </div>
-    
-    <div id="model-status-info-page" class="model-status-info-page">
-        <p><strong>Model Loading Status:</strong></p>
-        
-        <div id="obj-det-status" class="model-status-item">
-            <i class="status-circle fas fa-circle-notch fa-spin orange" data-status-key="objectDetection"></i>
-            <span>Auto Capture Object Detection Model: <span class="status-text">Loading...</span></span>
-        </div>
-        
-        <div id="classifier-status" class="model-status-item">
-            <i class="status-circle fas fa-circle-notch fa-spin orange" data-status-key="classifier"></i>
-            <span>Optic Disc Edema Classification Model: <span class="status-text">Loading...</span></span>
-        </div>
-    </div>
-
-    <label for="operatorId">Operator ID (Required):</label>
-    <input type="text" id="operatorId" placeholder="Enter Operator ID"/>
-    
-    <label for="subjectId">Subject ID (Required):</label>
-    <input type="text" id="subjectId" placeholder="Enter unique ID"/>
 
     <div class="nav-controls fixed-bottom-controls single-button">
      <button id="toCaptureBtn" class="primary-btn">TO CAPTURE</button>
     </div>
-   </section>
+</section>
 
 <section id="page-capture" class="page" data-page="2">
     <div class="camera-container">

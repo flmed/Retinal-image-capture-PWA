@@ -9,3 +9,8 @@ To do list:
 8. Fix NASA TLX Questionnaire question item, HIGH/LOW marking and add visual aid lines
 9. Fix/implement submit session function
 10. Create a new Dashboard to replace info page
+
+
+Bug tracking:
+- If top row used instead of bottom button to step from TLX to Overview page then the TLX is not saved
+- 

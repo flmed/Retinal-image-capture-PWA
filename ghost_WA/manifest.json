@@ -1,8 +1,9 @@
 {
   "name": "Retina Diangostics Web App",
   "short_name": "RD PWA",
-  "description": "A progressive web app for simulated image capture and questionnaire data collection.",
-  "start_url": "/index.html",
+  "description": "A progressive web app for retinal image capture and questionnaire data collection.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#007bff",

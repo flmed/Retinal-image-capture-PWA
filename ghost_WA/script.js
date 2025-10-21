@@ -82,6 +82,19 @@ const TLX_DIMENSIONS = [
     { name: "Frustration", prompt: "How insecure, discouraged, irritated, stressed, or annoyed were you?" },
 ];
 
+// Register the service worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+      .then(reg => {
+        console.log('✅ Service Worker registered successfully with scope:', reg.scope);
+      })
+      .catch(err => {
+        console.error('❌ Service Worker registration failed:', err);
+      });
+  });
+}
+
 // --- Utility ---
 function alertUser(message, isError = false) {
     console.log(`UI Alert (${isError ? 'ERROR' : 'INFO'}): ${message}`);
@@ -941,6 +954,123 @@ function renderCarousel() {
 
 // --- Page 3: Review Logic (UNCHANGED) ---
 
+
+// --- Review Page UI & Selection Logic (NEW) ---
+
+/**
+ * Updates the state and text of the action buttons on the Review Page.
+ * (Required to handle the state of the DELETE button based on selections).
+ */
+function updateReviewActionsVisibility() {
+    // Ensure the 'selected' property exists and count the true values
+    const selectedCount = capturedImages.filter(img => img.selected).length;
+    const deleteBtn = document.getElementById('reviewDeleteSelectedBtn');
+    const analyzeBtn = document.getElementById('reviewAnalyzeBtn');
+
+    if (deleteBtn) {
+        deleteBtn.textContent = `DELETE (${selectedCount})`;
+        deleteBtn.disabled = selectedCount === 0;
+    }
+    
+    if (analyzeBtn) {
+        // Disable ANALYZE ALL if no images exist
+        analyzeBtn.disabled = capturedImages.length === 0;
+    }
+}
+
+/**
+ * Toggles the 'selected' state of an image and updates its UI element.
+ * @param {number} imageId - The ID of the image to toggle.
+ */
+function toggleImageSelection(imageId) {
+    const image = capturedImages.find(img => img.id === imageId);
+    if (!image) return;
+
+    // 1. Update State
+    image.selected = !image.selected; // Toggle state
+
+    // 2. Update DOM
+    const thumbnailElement = document.querySelector(`.review-thumbnail[data-image-id="${imageId}"]`);
+    if (!thumbnailElement) return;
+
+    // Toggle the 'selected' class on the thumbnail container (for border/shadow)
+    thumbnailElement.classList.toggle('selected', image.selected);
+    
+    // Find the icon and update its classes for the checkmark effect
+    const icon = thumbnailElement.querySelector('.selection-icon');
+
+    if (image.selected) {
+        // Change icon to white checkmark on blue background
+        icon.classList.remove('fa-circle');
+        icon.classList.add('fa-check');
+    } else {
+        // Change icon back to the empty circle/ring appearance
+        icon.classList.remove('fa-check');
+        icon.classList.add('fa-circle');
+    }
+
+    updateReviewActionsVisibility();
+}
+
+
+/**
+ * Creates the HTML element for a single review thumbnail.
+ * Implements the new click-to-select behavior.
+ * @param {Object} img - The image object from capturedImages array.
+ * @returns {HTMLElement} The complete thumbnail element.
+ */
+function createReviewThumbnail(img) {
+    const thumbnail = document.createElement('div');
+    thumbnail.classList.add('review-thumbnail');
+    if (img.selected) {
+        thumbnail.classList.add('selected'); // Set initial state
+    }
+    thumbnail.dataset.imageId = img.id; 
+    
+    // 1. Image element
+    const image = document.createElement('img');
+    image.src = img.base64;
+    image.alt = img.name;
+    
+    // 2. Name label
+    const label = document.createElement('div');
+    label.classList.add('thumbnail-label');
+    label.textContent = img.name;
+
+    // 3. Selection Icon Wrapper (for position)
+    const selectIconWrapper = document.createElement('div');
+    selectIconWrapper.classList.add('selection-icon-wrapper');
+    
+    // 4. Selection Icon (Font Awesome)
+    const icon = document.createElement('i');
+    icon.classList.add('selection-icon', 'fas');
+    // Start with the correct icon based on state
+    icon.classList.add(img.selected ? 'fa-check' : 'fa-circle');
+    
+    selectIconWrapper.appendChild(icon);
+
+    // Append elements
+    thumbnail.appendChild(image);
+    thumbnail.appendChild(label);
+    thumbnail.appendChild(selectIconWrapper); 
+    
+    // *** CORE LOGIC CHANGE: Click/Tap/Long Press toggles selection ***
+    thumbnail.addEventListener('click', (e) => {
+        // Stop propagation to prevent accidental lightbox open on single click
+        e.stopPropagation(); 
+        toggleImageSelection(img.id); 
+    });
+    
+    // Double-click remains for lightbox viewing
+    thumbnail.addEventListener('dblclick', () => {
+        showLightbox(img.id);
+    });
+    
+    return thumbnail;
+}
+
+
+
 function renderReviewPage() {
     const gridLeft = document.getElementById('review-grid-left');
     const gridRight = document.getElementById('review-grid-right');
@@ -1008,18 +1138,6 @@ function toggleSelectionMode() {
         capturedImages.forEach(img => img.selected = false);
     }
     renderReviewPage();
-}
-
-function toggleImageSelection(imageId) {
-    const image = capturedImages.find(img => img.id === imageId);
-    if (image) {
-        image.selected = !image.selected;
-        const wrapper = document.querySelector(`[data-img-id="${imageId}"]`);
-        if (wrapper) {
-            wrapper.classList.toggle('selected', image.selected);
-        }
-        updateDeleteButtonCount();
-    }
 }
 
 function updateDeleteButtonCount() {

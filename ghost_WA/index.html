@@ -7,7 +7,7 @@
  
  <link rel="manifest" href="manifest.json">
  <meta name="theme-color" content="#ffffff">
- <meta name="apple-mobile-web-app-capable" content="yes">
+ <meta name="mobile-web-app-capable" content="yes">
  <meta name="apple-mobile-web-app-status-bar-style" content="black">
  <link rel="stylesheet" href="style.css" />
 </head>
@@ -110,12 +110,12 @@
                 </div>
 
                 <div class="controls-row-buttons">
-                    <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button>
-                    <div class="eye-toggle-container control-btn">
-                        <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
-                        <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
-                    </div>
                     <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
+                    <div class="eye-toggle-container control-btn">
+                        <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
+                        <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
+                    </div>
+                    <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button>
                 </div>
         </div>
 
@@ -174,25 +174,22 @@
    <section id="page-analysis" class="page" data-page="4">
         <h2>Analysis & Classification</h2>
 
-        <button id="runAnalysisBtn" class="primary-btn run-analysis-btn">Run Analysis</button>
-
         <div class="analysis-container">
             <div class="analysis-eye-block">
-                <h3>Left Eye (OS)</h3>
-                <p id="analysis-result-left" class="analysis-result-summary">Awaiting classification...</p>
-                
+                <h3>Left Eye (OS)</h3>                
                 <div id="analysis-grid-left" class="analysis-grid">
                     </div>
+                <p id="analysis-result-left" class="analysis-result-summary">Awaiting classification...</p>
             </div>
 
             <div class="analysis-eye-block">
-                <h3>Right Eye (OD)</h3>
-                <p id="analysis-result-right" class="analysis-result-summary">Awaiting classification...</p>
-                
+                <h3>Right Eye (OD)</h3>              
                 <div id="analysis-grid-right" class="analysis-grid">
                     </div>
+                <p id="analysis-result-right" class="analysis-result-summary">Awaiting classification...</p>
             </div>
         </div>
+        <button id="runAnalysisBtn" class="primary-btn run-analysis-btn">Run Analysis</button>
 
     <div class="nav-controls fixed-bottom-controls">
         <button id="backToReviewBtn" class="secondary-btn">BACK</button> 

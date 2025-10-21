@@ -710,8 +710,8 @@ label[for="subjectId"] {
 #eyeToggleRight { border-radius: 0; }
 
 /* Re-apply rounding to the buttons to match the container's rounding where applicable */
-.eye-toggle-container > #eyeToggleLeft { border-radius: 8px 0 0 8px; }
-.eye-toggle-container > #eyeToggleRight { border-radius: 0 8px 8px 0; }
+.eye-toggle-container > #eyeToggleLeft { border-radius: 0 8px 8px 0; }
+.eye-toggle-container > #eyeToggleRight { border-radius: 8px 0 0 8px; }
 
 #autoCaptureToggleBtn {
     /* Default state (OD off): dark grey, disabled */
@@ -722,7 +722,7 @@ label[for="subjectId"] {
 
 #autoCaptureToggleBtn.ready {
     /* OD on, auto-capture off: dark green, enabled */
-    background-color: #1b5e20;
+    background-color: #ffc107;
     cursor: pointer;
     opacity: 1;
 }

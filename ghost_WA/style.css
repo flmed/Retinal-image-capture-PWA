@@ -507,6 +507,72 @@ label[for="subjectId"] {
     margin-bottom: 20px;
 }
 
+/* --- NEW: Rotation Class to Disable Rotation --- */
+/* This class will be added to the video and canvas elements to remove the 180-degree flip. */
+#cameraFeed.no-rotation, 
+#boundingBoxCanvas.no-rotation {
+    transform: none !important; 
+}
+
+/* --- NEW: Minimal Toggle Switch Styles (Based on the HTML structure) --- */
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.setting-item label {
+    font-weight: 500;
+}
+/* The switch container */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+/* Hide default HTML checkbox */
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+/* The slider */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+}
+input:checked + .slider {
+  background-color: var(--primary-color);
+}
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+/* Rounded sliders */
+.slider.round {
+  border-radius: 24px;
+}
+.slider.round:before {
+  border-radius: 50%;
+}
+
 .setting-item {
     display: flex;
     justify-content: space-between;
@@ -607,7 +673,8 @@ label[for="subjectId"] {
     appearance: none;
     width: 42px;
     height: 22px;
-    background-color: rgba(255, 255, 255, 0.3);
+    /*background-color: rgba(255, 255, 255, 0.3); */
+    background-color: orange;
     border-radius: 11px;
     position: relative;
     cursor: pointer;
@@ -631,7 +698,7 @@ label[for="subjectId"] {
 }
 
 .od-toggle-input:checked::before {
-    transform: translateX(20px);
+    transform: translateX(18px);
 }
 
 /* REPLACEMENT: Larger font for the toggle text */

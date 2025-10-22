@@ -73,7 +73,7 @@
         </div>
     </div>
 
-    <div class="nav-controls fixed-bottom-controls single-button">
+    <div class="nav-controls fixed-bottom-controls">
      <button id="toCaptureBtn" class="primary-btn">TO CAPTURE</button>
     </div>
 </section>
@@ -95,25 +95,32 @@
             <label for="torchToggle">Flash/LED:</label>
             <button id="torchToggleBtn" class="primary-btn">ON</button>
         </div>
+        <div class="setting-item">
+            <label for="rotation-toggle">180° Image Flip</label>
+            <label class="switch">
+                <input type="checkbox" id="rotation-toggle" checked>
+                <span class="slider round"></span>
+            </label>
+        </div>
         <button id="closeOptionsBtn" class="primary-btn">Close</button>
     </div>
 
         <div class="controls-row video-controls-overlay">
 
                 <div class="controls-row-top">
+                    <div id="imageCounter" class="image-count-overlay">RIGHT: 0 | LEFT: 0</div>
                     <label for="odDetectionToggle" class="od-toggle-label">
                         <input type="checkbox" id="odDetectionToggle" class="od-toggle-input" />
                         <span class="od-toggle-slider"></span>
                         <span class="od-toggle-text">OD DETECTION</span>
                     </label>
-                    <div id="imageCounter" class="image-count-overlay">LEFT: 0 | RIGHT: 0</div>
                 </div>
 
                 <div class="controls-row-buttons">
                     <button id="manualCaptureBtn" class="control-btn primary-btn">MANUAL CAPTURE</button>
                     <div class="eye-toggle-container control-btn">
-                        <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT</button>
-                        <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT</button>
+                        <button id="eyeToggleRight" class="toggle-side-btn primary-btn active" data-eye="RIGHT">RIGHT(OD)</button>
+                        <button id="eyeToggleLeft" class="toggle-side-btn secondary-btn" data-eye="LEFT">LEFT(OS)</button>
                     </div>
                     <button id="autoCaptureToggleBtn" class="control-btn secondary-btn">AUTO CAPTURE (INACTIVE)</button>
                 </div>
@@ -249,9 +256,9 @@
             <p><strong>Comments:</strong> <span id="overviewComments">No comments provided.</span></p>
         </div>
         
-    <div class="controls-row page-footer-controls">
-        <button id="backFromOverviewBtn" class="secondary-btn">BACK</button>
-        <button id="submitSessionBtn" class="primary-btn">SUBMIT SESSION</button>
+    <div class="nav-controls fixed-bottom-controls">
+        <button id="page-overview-back" class="secondary-btn nav-btn back-btn">Back</button>
+        <button id="page-overview-save" class="primary-btn nav-btn next-btn">Save Session</button>
     </div>
    </section>
    </div>

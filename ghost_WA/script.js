@@ -11,6 +11,10 @@ let isAutoCaptureActive = false; // Renamed from isOdDetectionOn
 let autoCaptureInterval = null; 
 const MAX_CAROUSEL_IMAGES = 5;
 
+// NEW: Rotation State & Settings
+let isRotationActive = true; // Default to true (rotation is ON)
+const ROTATION_SETTING_KEY = 'pwa_rotation_active';
+
 // TensorFlow.js model variables
 let objectDetectionModel = null;
 let classifierModel = null;
@@ -87,10 +91,10 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
       .then(reg => {
-        console.log('✅ Service Worker registered successfully with scope:', reg.scope);
+        console.log('Service Worker registered successfully with scope:', reg.scope);
       })
       .catch(err => {
-        console.error('❌ Service Worker registration failed:', err);
+        console.error('Service Worker registration failed:', err);
       });
   });
 }
@@ -617,16 +621,29 @@ function drawBoundingBox(box, score) {
 
     // --- TRANSFORM CORRECTIONS (for rotated video streams) ---
     // Flip both horizontally and vertically
-    const flipped_ymin = 1 - ymax;
-    const flipped_ymax = 1 - box[0];
-    const flipped_xmin = 1 - xmax;
-    const flipped_xmax = 1 - box[1];
+    let target_ymin = ymin;
+    let target_xmin = xmin;
+    let target_ymax = ymax;
+    let target_xmax = xmax;
+
+    // Only apply the 180-degree flip compensation if rotation is active.
+    // When rotation is inactive (isRotationActive = false), the raw coordinates
+    // from the model (target_ymin, etc.) are used directly.
+    if (isRotationActive) {
+        // Original logic to flip both horizontally and vertically (180 deg correction)
+        target_ymin = 1 - ymax;
+        target_ymax = 1 - ymin;
+        target_xmin = 1 - xmax;
+        target_xmax = 1 - xmin;
+    }
+
 
     // Compute coordinates in display pixels
-    const x = flipped_xmin * canvas.width;
-    const y = flipped_ymin * canvas.height;
-    const width = (flipped_xmax - flipped_xmin) * canvas.width;
-    const height = (flipped_ymax - flipped_ymin) * canvas.height;
+    // Use the potentially transformed target coordinates
+    const x = target_xmin * canvas.width;
+    const y = target_ymin * canvas.height;
+    const width = (target_xmax - target_xmin) * canvas.width;
+    const height = (target_ymax - target_ymin) * canvas.height;
 
     // Draw bounding box
     ctx.save();
@@ -750,6 +767,43 @@ function mockImageCapture() {
     capturedImages.push(newImage);
     renderCarousel();
     updateCaptureStatus();
+}
+
+// NEW: Function to apply or remove the rotation CSS class
+function applyRotationStyle() {
+    // Assuming your camera feed is a <video> with id 'cameraFeed'
+    const videoElement = document.getElementById('cameraFeed');
+    // Assuming your object detection overlay is a <canvas> with id 'boundingBoxCanvas'
+    const canvasElement = document.getElementById('boundingBoxCanvas');
+
+    if (videoElement && canvasElement) {
+        // Toggle the 'no-rotation' class based on the state
+        if (isRotationActive) {
+            videoElement.classList.remove('no-rotation');
+            canvasElement.classList.remove('no-rotation');
+        } else {
+            videoElement.classList.add('no-rotation');
+            canvasElement.classList.add('no-rotation');
+        }
+    }
+}
+
+// NEW: Function to load the setting from storage
+function loadRotationSetting() {
+    const savedSetting = localStorage.getItem(ROTATION_SETTING_KEY);
+    
+    // savedSetting is null if not set, or a string 'true'/'false'
+    // Default to true if not found or explicitly set to 'true'
+    isRotationActive = (savedSetting === null || savedSetting === 'true');
+    
+    // Update the UI and apply the style
+    const toggle = document.getElementById('rotation-toggle');
+    if (toggle) {
+        toggle.checked = isRotationActive;
+    }
+    
+    // Apply the style on load, so the initial view is correct
+    applyRotationStyle();
 }
 
 
@@ -905,7 +959,7 @@ function updateCaptureStatus() {
     // FIX: Changed 'imageCountOverlay' to 'imageCounter' to match the HTML ID.
     const imageCounterOverlay = document.getElementById('imageCounter');
     if (imageCounterOverlay) {
-        imageCounterOverlay.textContent = `LEFT: ${leftCount} | RIGHT: ${rightCount}`;
+        imageCounterOverlay.textContent = `RIGHT: ${rightCount} | LEFT: ${leftCount}`;
     }
 }
 
@@ -1913,6 +1967,44 @@ function setupEventListeners() {
     document.getElementById('optionsBtn')?.addEventListener('click', () => toggleOptionsPanel(true));
     document.getElementById('closeOptionsBtn')?.addEventListener('click', () => toggleOptionsPanel(false));
     document.getElementById('torchToggleBtn')?.addEventListener('click', toggleTorch);
+
+    // NEW: Load Rotation Setting and Setup Listener (Using correct IDs)
+    const rotationToggle = document.getElementById('rotation-toggle');
+    // Using your actual IDs: 'cameraFeed' and 'boundingBoxCanvas'
+    const videoElement = document.getElementById('cameraFeed');
+    const canvasElement = document.getElementById('boundingBoxCanvas');
+
+    if (rotationToggle && videoElement && canvasElement) {
+        // 1. Load the preference from storage
+        const ROTATION_SETTING_KEY = 'pwa_rotation_active';
+        const savedSetting = localStorage.getItem(ROTATION_SETTING_KEY);
+        // isRotationActive must be a global state variable (as defined in our previous step)
+        isRotationActive = (savedSetting === null || savedSetting === 'true'); // Default to true
+        rotationToggle.checked = isRotationActive;
+
+        // 2. Function to apply/remove the rotation class
+        const applyRotationStyle = () => {
+            if (isRotationActive) {
+                // If ON, remove the class (default rotation applies)
+                videoElement.classList.remove('no-rotation');
+                canvasElement.classList.remove('no-rotation');
+            } else {
+                // If OFF, add the class (which sets transform: none !important)
+                videoElement.classList.add('no-rotation');
+                canvasElement.classList.add('no-rotation');
+            }
+        };
+
+        // 3. Apply the style immediately on setup (ensures correct initial state)
+        applyRotationStyle();
+        
+        // 4. Add the change listener
+        rotationToggle.addEventListener('change', (e) => {
+            isRotationActive = e.target.checked;
+            localStorage.setItem(ROTATION_SETTING_KEY, isRotationActive);
+            applyRotationStyle();
+        });
+    }
 
     // Review Page (Step 3) 
     document.getElementById('selectMultipleBtn')?.addEventListener('click', toggleSelectionMode);

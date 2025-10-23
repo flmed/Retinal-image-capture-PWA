@@ -99,6 +99,49 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+document.addEventListener('click', (event) => {
+  if (event.target && event.target.id === 'checkStorageBtn') {
+    reportStorageStatus();
+  }
+});
+
+// --- IndexedDB Setup ---
+// Define the database
+const db = new Dexie('RetinaCaptureDB');
+
+// Define the schema: version 1.
+// 'sessions' store: ++id for auto-incremented primary key, 
+// 'subjectId' and 'operatorId' for querying (indexes).
+// 'images' store: ++id for auto-incremented primary key, 
+// 'sessionId' to link back to the parent session.
+db.version(1).stores({
+    sessions: '++id, subjectId, operatorId, timestamp', 
+    images: '++id, sessionId, eye' 
+});
+
+// A flag to check if DB operations are possible (optional, but good practice)
+let isDbReady = false;
+
+// Function to initialize the DB and check for persistence
+async function initDatabase() {
+    try {
+        await db.open();
+        isDbReady = true;
+        console.log("IndexedDB opened successfully.");
+
+        // OPTIONAL: Request Persistent Storage
+        if (navigator.storage && navigator.storage.persist) {
+            const isPersisted = await navigator.storage.persist();
+            console.log(`Persistent storage granted: ${isPersisted}`);
+        }
+        
+    } catch (e) {
+        console.error("Failed to open IndexedDB.", e);
+        isDbReady = false;
+        alertUser("Error: Local database failed to initialize. Session saving will not work.", true);
+    }
+}
+
 // --- Utility ---
 function alertUser(message, isError = false) {
     console.log(`UI Alert (${isError ? 'ERROR' : 'INFO'}): ${message}`);
@@ -106,6 +149,28 @@ function alertUser(message, isError = false) {
 
 function customConfirm(message) {
     return window.confirm(message); 
+}
+
+// Storage space estimation //
+async function reportStorageStatus() {
+  const { quota, usage } = await navigator.storage.estimate();
+  const persisted = await (navigator.storage.persisted?.() || Promise.resolve(false));
+
+  if (navigator.storage && navigator.storage.persist) {
+    const granted = await navigator.storage.persist();
+    console.log(granted ? "Persistence granted" : "Persistence denied");
+    }
+
+  const msg = `
+    Storage info:
+    Quota: ${(quota / 1024 / 1024).toFixed(2)} MB
+    Used: ${(usage / 1024 / 1024).toFixed(2)} MB
+    Persistent: ${persisted}
+    `;
+    alert(msg);
+
+
+
 }
 
 // --- Paging & Navigation ---
@@ -251,125 +316,95 @@ function navigateTo(step) {
 }
 
 async function loadModels() {
-    // 1. Initial State: Set text for individual status lines (NO ICONS)
+    // 1. Initial State: Set text for individual status lines
     if (objDetStatusText) objDetStatusText.textContent = STATUS.ORANGE.text;
     if (classifierStatusText) classifierStatusText.textContent = STATUS.ORANGE.text;
-    
-    // Initialize combined status
-    if (overallStatusText) {
-        overallStatusText.textContent = 'Loading Models...';
-    }
-    
-    // Load models in parallel to speed up startup time
-    const results = await Promise.allSettled([
-        // Auto Capture Object Detection Model (tf.loadGraphModel)
-        (async () => {
-            const model = await tf.loadGraphModel(
-                objectDetectionModelUrl,
-                {
-                    onProgress: (fraction) => {
-                        const percent = Math.floor(fraction * 100);
-                        objDetStatusText.textContent = `Loading... ${percent}%`; 
-                        if (objDetProgressBar) {
-                            objDetProgressBar.style.width = `${percent}%`;
-                        }
-                    }
+    if (overallStatusText) overallStatusText.textContent = 'Loading Models...';
+
+    // Track status manually since we are not using Promise.allSettled
+    let allCoreModelsLoaded = true;
+
+    // --- 1. Load Object Detection Model (SEQUENTIALLY) ---
+    try {
+        const model = await tf.loadGraphModel(
+            objectDetectionModelUrl,
+            {
+                onProgress: (fraction) => {
+                    const percent = Math.floor(fraction * 100);
+                    if (objDetStatusText) objDetStatusText.textContent = `Loading... ${percent}%`; 
+                    if (objDetProgressBar) objDetProgressBar.style.width = `${percent}%`;
                 }
-            );
-            objectDetectionModel = model;
-            return { modelKey: 'objectDetection', model };
-        })(),
+            }
+        );
+        objectDetectionModel = model;
+        console.log('Object Detection model loaded successfully.');
+        if (objDetProgressBar) objDetProgressBar.style.width = `100%`;
+        if (objDetStatusText) objDetStatusText.textContent = STATUS.GREEN.text;
         
-        // Optic Disc Edema Classification Model (tf.loadLayersModel)
-        (async () => {
+    } catch (e) {
+        console.error('Error loading objectDetection model:', e);
+        if (objDetStatusText) objDetStatusText.textContent = STATUS.RED.text;
+        allCoreModelsLoaded = false;
+    }
+
+    // --- 2. Load Classifier Model (SEQUENTIALLY) ---
+    if (allCoreModelsLoaded) { // Only proceed if the first core model loaded
+        try {
             const model = await tf.loadLayersModel(
                 classifierModelUrl,
                 {
                     onProgress: (fraction) => {
                         const percent = Math.floor(fraction * 100);
-                        classifierStatusText.textContent = `Loading... ${percent}%`; 
-                        if (classifierProgressBar) {
-                            classifierProgressBar.style.width = `${percent}%`;
-                        }
+                        if (classifierStatusText) classifierStatusText.textContent = `Loading... ${percent}%`; 
+                        if (classifierProgressBar) classifierProgressBar.style.width = `${percent}%`;
                     }
                 }
             );
             classifierModel = model;
-            return { modelKey: 'classifier', model };
-        })(),
-        
-        // Pretrained classifier (load in background, not tracked on status bar)
-        tf.loadLayersModel(pretrainedClassifierModelUrl) 
-    ]);
+            console.log('Classifier model loaded successfully.');
+            if (classifierProgressBar) classifierProgressBar.style.width = `100%`;
+            if (classifierStatusText) classifierStatusText.textContent = STATUS.GREEN.text;
 
-    // Track if all CORE models loaded for combined status
-    let allCoreModelsLoaded = true;
-
-    // 2. Update status based on results
-    results.forEach(result => {
-        const modelKey = result.value ? result.value.modelKey : null;
-        let currentTextElement;
-
-        // Identify which text element to update for the individual model
-        if (modelKey === 'objectDetection') {
-            currentTextElement = objDetStatusText;
-        } else if (modelKey === 'classifier') {
-            currentTextElement = classifierStatusText;
+        } catch (e) {
+            console.error('Error loading classifier model:', e);
+            if (classifierStatusText) classifierStatusText.textContent = STATUS.RED.text;
+            allCoreModelsLoaded = false;
         }
+    } else {
+         // If OD failed, mark classifier as error too if we skip
+         if (classifierStatusText) classifierStatusText.textContent = STATUS.RED.text;
+    }
 
-        if (modelKey) {
-             if (result.status === 'fulfilled') {
-                console.log(`${modelKey} model loaded successfully.`);
-                
-                // Update progress bar to 100%
-                if (modelKey === 'objectDetection' && objDetProgressBar) objDetProgressBar.style.width = `100%`;
-                if (modelKey === 'classifier' && classifierProgressBar) classifierProgressBar.style.width = `100%`;
 
-                // *** REPLACED updateModelStatus with direct text update ***
-                if (currentTextElement) {
-                    currentTextElement.textContent = STATUS.GREEN.text;
-                }
-            } else {
-                console.error(`Error loading ${modelKey} model:`, result.reason);
-                
-                // *** REPLACED updateModelStatus with direct text update ***
-                if (currentTextElement) {
-                    currentTextElement.textContent = STATUS.RED.text;
-                }
-                allCoreModelsLoaded = false; // Flag error for combined status
-            }
-        } else if (result.status === 'fulfilled' && result.value) {
-            pretrainedClassifierModel = result.value;
-            console.log('Pretrained classifier model loaded.');
-        } else if (result.status === 'rejected') {
-            // Log other errors (like the pretrained model)
-            console.error('Error in background model loading:', result.reason);
-        }
-    });
+    // --- 3. Load Pretrained Classifier (Background/Optional) ---
+    // This can still be parallel or sequential, but it's not core to the failure. 
+    // Keeping it simple for now and letting it load independently:
+    if (allCoreModelsLoaded) {
+        tf.loadLayersModel(pretrainedClassifierModelUrl)
+            .then(model => {
+                pretrainedClassifierModel = model;
+                console.log('Pretrained classifier model loaded (in background).');
+            })
+            .catch(e => {
+                console.error('Error loading pretrained classifier:', e);
+            });
+    }
 
-    // NEW: Update the SINGLE combined status icon and text
+    // --- 4. Update the SINGLE combined status icon and text ---
     const icon = combinedStatusIcon;
     const text = overallStatusText;
     
     if (icon && text) {
         let finalStatus = allCoreModelsLoaded ? STATUS.GREEN : STATUS.RED;
-        let finalStatusText = allCoreModelsLoaded ? 'All Models Loaded Successfully' : 'Error Loading Core Models';
+        let finalStatusText = allCoreModelsLoaded ? 'All Core Models Loaded Successfully' : 'Error Loading Core Models';
 
-        // Update text
+        // Update UI logic as before
         text.textContent = finalStatusText;
-
-        // Update icon - clear all dynamic classes first
         icon.className = 'fas'; 
-        
-        // Add new icon class (fa-check-circle or fa-times-circle)
         icon.classList.add(finalStatus.icon);
-        // Remove old color classes and add the new one
         icon.classList.remove('orange', 'red', 'green', 'fa-spin', 'fa-circle-notch');
         icon.classList.add(finalStatus.color);
     }
-
-    // NOTE: The detection loop (detectObjects) is NOT started here. 
-    // It should be started when the user navigates to the Capture page (Step 2).
 }
 
 
@@ -731,7 +766,8 @@ function manualImageCapture() {
         eye: currentEye, 
         selected: false,
         name: name, // Store the name
-        type: type // Store the type
+        type: type, // Store the type
+        score: null
     };
     capturedImages.push(newImage);
     renderCarousel();
@@ -909,7 +945,8 @@ async function detectObjects() {
                     eye: currentEye,
                     selected: false,
                     name,
-                    type
+                    type,
+                    score: scores,
                 };
                 capturedImages.push(newImage);
                 renderCarousel();
@@ -1732,33 +1769,83 @@ function renderOverviewPage() {
 // --- Submission (MODIFIED to be triggered from Overview) ---
 
 async function submitSession() {
-    if (window.isAuthReady !== true) {
-        alertUser('Application is still initializing. Please wait.', true);
+    if (!isDbReady) {
+        alertUser('Local database is not ready. Please wait.', true);
         return;
     }
-
-    // Use the globally stored tlxAnswers (captured before navigating to Overview)
-    const questionnaireData = { ...tlxAnswers };
-    questionnaireData.comments = subjectInfo.notes;
-
-    const sessionData = {
-        operatorId: subjectInfo.operatorId, // ADDED
+    
+    // 1. Prepare Session Metadata
+    const timestamp = new Date().toISOString();
+    const questionnaireData = { ...tlxAnswers, comments: subjectInfo.notes };
+    
+    const sessionMetadata = {
+        operatorId: subjectInfo.operatorId,
         subjectId: subjectInfo.id,
-        userId: window.userId,
-        timestamp: serverTimestamp(),
-        analysisResults: analysisResults, // Added analysis results
+        timestamp: timestamp,
+        // Non-image related data
+        analysisResults: analysisResults,
         questionnaire: questionnaireData,
         imageCount: capturedImages.length,
-        imageMetadata: capturedImages.map((img, index) => ({ id: img.id, index: index + 1, eye: img.eye }))
+        isRotationActive: isRotationActive,
+        manualCounts: { manualLeftCount, manualRightCount, autoLeftCount, autoRightCount }
+        // NOTE: We don't store the large image data here, only a count.
     };
 
     try {
-        const collectionPath = `artifacts/${window.appId}/users/${window.userId}/session_data`;
-        await addDoc(collection(window.db, collectionPath), sessionData);
-        showModal();
+        // 2. Start a single, atomic Dexie transaction
+        const sessionId = await db.transaction('rw', db.sessions, db.images, async (tx) => {
+            
+            // a. Add session metadata first to get the auto-generated primary key (sessionId)
+            const newSessionId = await db.sessions.add(sessionMetadata); 
+            
+            // b. Prepare images for bulk insertion using the new sessionId
+            const imagesToStore = capturedImages.map(img => {
+                // IMPORTANT: Convert Base64 string back to a Blob for efficient storage
+                const byteCharacters = atob(img.data.split(',')[1]);
+                const byteArrays = [];
+                for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+                    const slice = byteCharacters.slice(offset, offset + 512);
+                    const byteNumbers = new Array(slice.length);
+                    for (let i = 0; i < slice.length; i++) {
+                        byteNumbers[i] = slice.charCodeAt(i);
+                    }
+                    byteArrays.push(new Uint8Array(byteNumbers));
+                }
+                const blob = new Blob(byteArrays, { type: 'image/jpeg' });
+                
+                return {
+                    sessionId: newSessionId, // Link to the session
+                    eye: img.eye,
+                    blobData: blob, // Store the actual image Blob
+                    id: img.id, // Keep the original image ID for reference
+                    selectionScore: img.selectionScore,
+                    od_score: img.od_score
+                };
+            });
+            
+            // c. Store all image Blobs
+            await db.images.bulkAdd(imagesToStore);
+            
+            return newSessionId;
+        });
+
+        console.log(`Session and ${capturedImages.length} images saved locally to IndexedDB. Session ID: ${sessionId}`);
+        alertUser(`Session saved locally to database. ID: ${sessionId}`);
+        showModal(); // Use the existing success modal
+        
     } catch (e) {
-        console.error("Error adding document: ", e);
-        alertUser("Submission failed. Check console.", true);
+        console.error("IndexedDB Submission Error: ", e);
+        // Transaction is automatically rolled back on error
+        alertUser("Local database saving failed. Check console.", true);
+    }
+}
+
+/**
+ * Prompts the user to restart the entire PWA session and calls startNewSession if confirmed.
+ */
+function restartSessionFromOverview() {
+    if (typeof customConfirm === 'function' ? customConfirm('Are you sure you want to start a new session? All unsaved data will be lost.') : window.confirm('Are you sure you want to start a new session? All unsaved data will be lost.')) {
+        startNewSession(); // Calls the now-fixed state reset logic
     }
 }
 
@@ -1774,10 +1861,11 @@ function closeModal() {
 }
 
 function startNewSession() {
+    // --- 1. Reset Application State Variables ---
     capturedImages = [];
-    subjectInfo = { operatorId: '', id: '', notes: '' }; // MODIFIED
+    subjectInfo = { operatorId: '', id: '', notes: '' };
     isSelectionMode = false;
-    isOdDetectionOn = false;
+    isAutoCaptureActive = false;
     currentEye = 'RIGHT';
 
     // RESET NEW COUNTERS
@@ -1790,14 +1878,41 @@ function startNewSession() {
     analysisResults = { left: 'Not yet run.', right: 'Not yet run.' };
     tlxAnswers = {}; 
 
-    document.getElementById('operatorId').value = ''; // ADDED
-    document.getElementById('subjectId').value = '';
-    document.getElementById('comments').value = '';
+    // --- 2. Safely Reset Page 1 Form Fields ---
+    // Use an IF check to safely assign the value
+    const operatorIdInput = document.getElementById('operatorId');
+    if (operatorIdInput) {
+        operatorIdInput.value = ''; 
+    }
+    
+    const subjectIdInput = document.getElementById('subjectId');
+    if (subjectIdInput) {
+        subjectIdInput.value = '';
+    }
+    
+    const commentsInput = document.getElementById('comments');
+    if (commentsInput) {
+        commentsInput.value = '';
+    }
     
     updateCaptureStatus();
-    document.getElementById('odStatus').textContent = 'INACTIVE';
-    document.getElementById('autoCaptureToggleBtn').textContent = 'AUTO CAPTURE (INACTIVE)';
-    document.getElementById('autoCaptureToggleBtn').classList.remove('active');
+
+    // --- 3. Safely Reset Page 2 UI Elements ---
+    
+    // Reset OD Detection Checkbox
+    const odToggle = document.getElementById('odDetectionToggle');
+    if (odToggle) {
+        odToggle.checked = false;
+    }
+    
+    // Reset Auto Capture Button Text/Class
+    const autoBtn = document.getElementById('autoCaptureToggleBtn');
+    if (autoBtn) {
+        // The previous lines that caused the crash/error are now safe
+        autoBtn.textContent = 'AUTO CAPTURE (INACTIVE)'; 
+        autoBtn.classList.remove('active');
+    }
+    
     updateEyeToggleUI();
     renderCarousel();
     
@@ -1934,8 +2049,10 @@ function setupEventListeners() {
     });
 
     // Overview Page (Step 6) - NEW
-    document.getElementById('backFromOverviewBtn')?.addEventListener('click', () => navigateTo(5)); 
-    document.getElementById('submitSessionBtn')?.addEventListener('click', submitSession); 
+    document.getElementById('page-overview-back')?.addEventListener('click', () => navigateTo(5)); 
+    document.getElementById('page-overview-save')?.addEventListener('click', submitSession);
+    document.getElementById('restartSessionBtn')?.addEventListener('click', restartSessionFromOverview);
+     
 
     // Modal & Lightbox
     document.getElementById('continueSessionBtn')?.addEventListener('click', closeModal);
@@ -1972,13 +2089,15 @@ function setupEventListeners() {
 
 // --- Initialization ---
 window.addEventListener('load', () => {
-// 1. Get the new status DOM elements
+    
+    // 1. Get the new status DOM elements
     getInfoPageStatusElements();
     
     // 2. Start model loading immediately
     loadModels();
     
     // 3. Keep existing setup logic
+    initDatabase();
     setupEventListeners(); 
     updateStepNav();
 });

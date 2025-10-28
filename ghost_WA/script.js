@@ -1801,7 +1801,7 @@ async function submitSession() {
             // b. Prepare images for bulk insertion using the new sessionId
             const imagesToStore = capturedImages.map(img => {
                 // IMPORTANT: Convert Base64 string back to a Blob for efficient storage
-                const byteCharacters = atob(img.data.split(',')[1]);
+                const byteCharacters = atob(img.base64.split(',')[1]);
                 const byteArrays = [];
                 for (let offset = 0; offset < byteCharacters.length; offset += 512) {
                     const slice = byteCharacters.slice(offset, offset + 512);
